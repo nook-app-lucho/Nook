@@ -1,4 +1,4 @@
-import { store } from '../store.js';
+import { store, supabase } from '../store.js';
 import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency } from '../utils.js';
 
 const MOODS = [
@@ -276,15 +276,31 @@ export const initHome = () => {
     });
     
     document.getElementById('btn-upload-hero')?.addEventListener('click', () => document.getElementById('file-hero-upload')?.click());
-    document.getElementById('file-hero-upload')?.addEventListener('change', (e) => {
+    
+    // Atualizado para usar Supabase Storage na foto de capa (Hero)
+    document.getElementById('file-hero-upload')?.addEventListener('change', async (e) => {
         const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                store.setProfile({ ...store.profile, heroCover: ev.target.result });
-                triggerHaptic(30); renderHome(); closeAllModals(true);
-            };
-            reader.readAsDataURL(file);
+        if (!file) return;
+        
+        const fileExt = file.name.split('.').pop();
+        const fileName = `covers/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+
+        try {
+            const { data, error } = await supabase.storage
+                .from('photos')
+                .upload(fileName, file);
+
+            if (error) throw error;
+
+            const { data: publicUrlData } = supabase.storage
+                .from('photos')
+                .getPublicUrl(fileName);
+
+            store.setProfile({ ...store.profile, heroCover: publicUrlData.publicUrl });
+            triggerHaptic(30); renderHome(); closeAllModals(true);
+        } catch (err) {
+            console.error('Erro ao subir foto de capa:', err);
+            alert('Falha ao enviar a foto de capa.');
         }
     });
     
@@ -318,7 +334,7 @@ export const initHome = () => {
         });
     }
     
-    let memoryPhotoBase64 = null;
+    let memoryPhotoBase64 = null; // Mantemos o nome da variável mas ela vai guardar a URL pública agora
     document.getElementById('btn-open-memory-modal')?.addEventListener('click', () => {
         document.getElementById('form-add-memory')?.reset();
         const prev = document.getElementById('memory-photo-preview');
@@ -330,17 +346,37 @@ export const initHome = () => {
     });
     
     document.getElementById('btn-upload-memory-photo')?.addEventListener('click', () => document.getElementById('file-memory-photo')?.click());
-    document.getElementById('file-memory-photo')?.addEventListener('change', (e) => {
+    
+    // Atualizado para usar Supabase Storage na foto de Memória
+    document.getElementById('file-memory-photo')?.addEventListener('change', async (e) => {
         const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                memoryPhotoBase64 = ev.target.result;
-                const prev = document.getElementById('memory-photo-preview');
-                if (prev) { prev.style.backgroundImage = `url('${memoryPhotoBase64}')`; prev.classList.remove('d-none'); }
-                triggerHaptic(20);
-            };
-            reader.readAsDataURL(file);
+        if (!file) return;
+
+        const fileExt = file.name.split('.').pop();
+        const fileName = `memories/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+
+        try {
+            const { data, error } = await supabase.storage
+                .from('photos')
+                .upload(fileName, file);
+
+            if (error) throw error;
+
+            const { data: publicUrlData } = supabase.storage
+                .from('photos')
+                .getPublicUrl(fileName);
+
+            memoryPhotoBase64 = publicUrlData.publicUrl;
+            
+            const prev = document.getElementById('memory-photo-preview');
+            if (prev) { 
+                prev.style.backgroundImage = `url('${memoryPhotoBase64}')`; 
+                prev.classList.remove('d-none'); 
+            }
+            triggerHaptic(20);
+        } catch (err) {
+            console.error('Erro ao subir foto da memória:', err);
+            alert('Falha ao enviar a foto da memória.');
         }
     });
     

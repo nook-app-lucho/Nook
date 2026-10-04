@@ -1,4 +1,4 @@
-import { store } from '../store.js'; 
+import { store, supabase } from '../store.js'; 
 import { triggerHaptic, getInitials } from '../utils.js'; 
 import { renderFinances } from './finances.js'; 
 import { renderHome } from './home.js'; 
@@ -29,7 +29,8 @@ const EMOJI_LIST = [
 export const renderAvatar = (elements, name, avatarData) => {
     elements.forEach(el => {
         if (!el) return;
-        if (avatarData && avatarData.startsWith('data:image')) {
+        // Verifica se é uma URL válida ou Base64 (foto)
+        if (avatarData && (avatarData.startsWith('data:image') || avatarData.startsWith('http'))) {
             el.textContent = '';
             el.style.backgroundImage = `url(${avatarData})`;
             el.classList.add('has-photo');
@@ -71,26 +72,33 @@ export const updateProfileUI = () => {
     if (propLabelVo) propLabelVo.textContent = `${p2}: `;
 };
 
-const processImageFile = (file, callback) => {
+// Modificado para usar o Supabase Storage em vez de Base64
+const processImageFile = async (file, callback) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const maxSize = 150;
-            let width = img.width;
-            let height = img.height;
-            if (width > height) { if (width > maxSize) { height *= maxSize / width; width = maxSize; } } 
-            else { if (height > maxSize) { width *= maxSize / height; height = maxSize; } }
-            canvas.width = width; canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            callback(canvas.toDataURL('image/jpeg', 0.8));
-        };
-        img.src = event.target.result;
-    };
-    reader.readAsDataURL(file);
+
+    // Gerar um nome de arquivo único
+    const fileExt = file.name.split('.').pop();
+    const fileName = `avatars/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
+
+    try {
+        // Upload para o bucket "photos"
+        const { data, error } = await supabase.storage
+            .from('photos')
+            .upload(fileName, file, { cacheControl: '3600', upsert: false });
+
+        if (error) throw error;
+
+        // Obter URL pública
+        const { data: publicUrlData } = supabase.storage
+            .from('photos')
+            .getPublicUrl(fileName);
+
+        // Retorna a URL para ser salva no banco
+        callback(publicUrlData.publicUrl);
+    } catch (err) {
+        console.error('Erro ao fazer upload do avatar:', err);
+        alert('Falha ao enviar a foto. Tente novamente.');
+    }
 };
 
 const initEmojiPicker = () => {
@@ -146,10 +154,18 @@ const setupAvatarPicker = (personId) => {
     });
     btnFoto?.addEventListener('click', () => fileInput?.click());
     btnEmoji?.addEventListener('click', () => openEmojiPicker(personId));
+    
+    // Atualizado para receber URL em vez de Base64
     fileInput?.addEventListener('change', (e) => {
-        processImageFile(e.target.files[0], (base64) => {
-            if(personId === 'p1') tempAvatarP1 = base64; else tempAvatarP2 = base64;
-            renderAvatar([preview], inputName?.value || '', base64);
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        // Coloca um placeholder de loading ou texto enquanto sobe a imagem (opcional)
+        preview.textContent = "⌛";
+        
+        processImageFile(file, (url) => {
+            if(personId === 'p1') tempAvatarP1 = url; else tempAvatarP2 = url;
+            renderAvatar([preview], inputName?.value || '', url);
             triggerHaptic(20);
         });
     });
@@ -168,10 +184,9 @@ export const initOnboarding = () => {
     setupAvatarPicker('p1'); 
     setupAvatarPicker('p2');
     
-// --- PREVENÇÃO DE ERROS: Bloqueia datas futuras no calendário ---
+    // --- PREVENÇÃO DE ERROS: Bloqueia datas futuras no calendário ---
     const dateInput = document.getElementById('onboarding-date');
     if (dateInput) {
-        // Pega a data de hoje no fuso local e formata como YYYY-MM-DD
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
