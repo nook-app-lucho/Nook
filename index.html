@@ -410,6 +410,10 @@
             <header class="top-brand-bar">
                 <div class="brand-greeting agenda-header-actions">
                     <span class="greeting-text">Agenda</span>
+                    <div class="view-toggle" style="margin-left: auto; margin-right: 8px; display: flex; gap: 4px;">
+                        <button id="btn-view-week" class="tab-pill tab-pill-sm active">Semana</button>
+                        <button id="btn-view-month" class="tab-pill tab-pill-sm outline">Mês</button>
+                    </div>
                     <button type="button" id="btn-go-today" class="btn-today">Hoje</button>
                     <label for="agenda-jump-date" class="btn-jump-date" title="Ir para data">
                         <i class="ph ph-calendar-blank text-primary mr-4 icon-md"></i>
@@ -420,7 +424,10 @@
                 <button class="btn-icon" id="btn-open-event-modal"><i class="ph ph-plus-circle"></i></button>
             </header>
             
-            <section class="date-scroller-container"><div class="date-scroller" id="agenda-date-scroller"></div></section>
+            <section class="date-scroller-container">
+                <div class="date-scroller" id="agenda-date-scroller"></div>
+                <div class="month-grid-container d-none" id="agenda-month-grid"></div>
+            </section>
             
             <section class="tasks-section mt-16">
                 <h3 class="section-title" id="agenda-selected-title">HOJE</h3>

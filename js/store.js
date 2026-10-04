@@ -230,13 +230,26 @@ export const store = {
 
     async fetchAgenda() {
         const { data } = await supabase.from('agenda').select('*').eq('couple_id', this.currentCoupleId);
-        if (data) this.agenda = data;
+        if (data) {
+            // Mapeia do formato do banco (created_by) para o do frontend (createdBy)
+            this.agenda = data.map(a => {
+                const item = { ...a, createdBy: a.created_by };
+                delete item.created_by; 
+                return item;
+            });
+        }
     },
     
     async setAgenda(data) {
         this.agenda = data;
         if (!this.currentCoupleId) return;
-        await supabase.from('agenda').upsert(data.map(a => ({ ...a, couple_id: this.currentCoupleId })));
+        
+        await supabase.from('agenda').upsert(data.map(a => {
+            // Traduz a propriedade do frontend de volta para o padrão da coluna do banco
+            const row = { ...a, couple_id: this.currentCoupleId, created_by: a.createdBy };
+            delete row.createdBy; // Remove a chave do JS para não causar erro no Postgres
+            return row;
+        }));
     },
 
     async fetchGoals() {

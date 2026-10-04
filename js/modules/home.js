@@ -2,12 +2,12 @@ import { store, supabase } from '../store.js';
 import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency } from '../utils.js';
 
 const MOODS = [
-    { id: 'energia', icon: '🔋', label: 'Cheio(a) de energia' },
-    { id: 'cansado', icon: '🥱', label: 'Cansado(a)' },
+    { id: 'energia', icon: '⚡', label: 'Cheio(a) de energia' },
+    { id: 'cansado', icon: '😴', label: 'Cansado(a)' },
     { id: 'lanche', icon: '🍟', label: 'Querendo lanche' },
-    { id: 'apaixonado', icon: '🥰', label: 'Apaixonado(a)' },
+    { id: 'apaixonado', icon: '😍', label: 'Apaixonado(a)' },
     { id: 'estresse', icon: '🤯', label: 'Estressado(a)' },
-    { id: 'feliz', icon: '😁', label: 'Feliz da vida' }
+    { id: 'feliz', icon: '🥳', label: 'Feliz da vida' }
 ];
 
 const PRESET_COVERS = [
@@ -18,6 +18,7 @@ const PRESET_COVERS = [
 ];
 
 let targetPerson = 'p1';
+let editingMemoryId = null; // Variável para controlar a edição
 
 const getFirstName = (fullName, fallback = '') => {
     if (!fullName) return fallback;
@@ -36,11 +37,13 @@ export const renderHome = () => {
     if (greetingElement) {
         const hour = new Date().getHours();
         const day = new Date().getDay();
-        let text = "Boa noite! Descansem ✨";
+        let text = "Boa noite! Descansem 😴";
+        
         if (day === 5 && hour > 17) text = "Sextou, casal! 🍻";
-        else if (day === 0 && hour < 12) text = "Domingo de preguiça 😴";
-        else if (hour >= 5 && hour < 12) text = "Bom dia, amores! ☕";
-        else if (hour >= 12 && hour < 18) text = "Boa tarde! ☀️";
+        else if (day === 0 && hour < 12) text = "Domingo de preguiça ☕";
+        else if (hour >= 5 && hour < 12) text = "Bom dia, amores! ☀️";
+        else if (hour >= 12 && hour < 18) text = "Boa tarde! 🌅";
+        
         greetingElement.textContent = text;
     }
     
@@ -65,22 +68,21 @@ export const renderHome = () => {
     
     const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
     const partnerPersonId = myPersonId === 'p1' ? 'p2' : 'p1';
-
+    
     const renderMoodCard = (slot, personId) => {
         const rawName = personId === 'p1' ? store.profile?.p1 : store.profile?.p2;
         const fallbackDefault = personId === 'p1' ? 'Você' : 'Parceiro(a)';
         const firstName = getFirstName(rawName, fallbackDefault);
-
         const nameEl = document.getElementById(`mood-name-${slot}`);
         if (nameEl) nameEl.textContent = firstName;
-
+        
         const avatarEl = document.getElementById(`mood-avatar-${slot}`);
         if (avatarEl) avatarEl.innerHTML = getAvatarHtml(personId, '24px');
-
+        
         const moodData = (store.moods && store.moods[personId]) ? MOODS.find(m => m.id === store.moods[personId]) : null;
         const iconEl = document.getElementById(`mood-icon-${slot}`);
         const textEl = document.getElementById(`mood-text-${slot}`);
-
+        
         if (moodData) {
             if (iconEl) iconEl.textContent = moodData.icon;
             if (textEl) { 
@@ -88,14 +90,14 @@ export const renderHome = () => {
                 textEl.className = 'mood-text active'; 
             }
         } else {
-            if (iconEl) iconEl.textContent = '💭';
+            if (iconEl) iconEl.textContent = '😶';
             if (textEl) {
                 textEl.textContent = 'Como está?';
                 textEl.className = 'mood-text';
             }
         }
     };
-
+    
     renderMoodCard('p1', myPersonId); 
     renderMoodCard('p2', partnerPersonId);
     
@@ -182,10 +184,15 @@ const renderMemoriesSection = () => {
             const [y, m, d] = mem.date.split('-');
             const card = document.createElement('div');
             card.className = 'memory-card';
+            
+            // Adicionado botão de editar na grid sobrescrevendo inline positions para não quebrar o CSS
             card.innerHTML = `
                 <div class="memory-photo" style="background-image: url('${mem.photo || 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=400'}')">
                     <span class="memory-date-badge">${d}/${m}/${y}</span>
-                    <button class="btn-delete-memory" title="Apagar memória"><i class="ph ph-trash"></i></button>
+                    <div style="position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; z-index: 10;">
+                        <button class="btn-edit-memory" title="Editar memória" style="position: static; background: rgba(0, 0, 0, 0.5); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer;"><i class="ph ph-pencil-simple"></i></button>
+                        <button class="btn-delete-memory" title="Apagar memória" style="position: static; background: rgba(0, 0, 0, 0.5); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer;"><i class="ph ph-trash"></i></button>
+                    </div>
                 </div>
                 <div class="memory-info">
                     <strong>${escapeHTML(mem.title)}</strong>
@@ -193,12 +200,37 @@ const renderMemoriesSection = () => {
                 </div>
             `;
             
-            // MANIPULAÇÃO DIRETA: Eliminar Memória
+            card.querySelector('.btn-edit-memory').addEventListener('click', (e) => {
+                e.stopPropagation();
+                triggerHaptic(10);
+                
+                editingMemoryId = mem.id;
+                
+                document.getElementById('memory-title').value = mem.title || '';
+                document.getElementById('memory-date').value = mem.date || '';
+                document.getElementById('memory-note').value = mem.note || '';
+                
+                const prev = document.getElementById('memory-photo-preview');
+                if (mem.photo) {
+                    prev.style.backgroundImage = `url('${mem.photo}')`;
+                    prev.classList.remove('d-none');
+                } else {
+                    prev.style.backgroundImage = 'none';
+                    prev.classList.add('d-none');
+                }
+                
+                const modalTitle = document.querySelector('#memory-bottom-sheet .sheet-header h2');
+                if(modalTitle) modalTitle.textContent = "Editar Memória";
+                
+                openModal('memory-bottom-sheet');
+            });
+
             card.querySelector('.btn-delete-memory').addEventListener('click', (e) => {
-                e.stopPropagation(); triggerHaptic(20);
+                e.stopPropagation(); 
+                triggerHaptic(20);
                 if (confirm('Deseja realmente apagar esta memória?')) {
                     store.setMemories(store.memories.filter(m => m.id !== mem.id));
-                    card.remove(); // Remove o card do DOM sem reconstruir a lista
+                    card.remove(); 
                     if (store.memories.length === 0) renderMemoriesSection();
                 }
             });
@@ -231,19 +263,42 @@ const renderNotesSection = () => {
         const rotation = index % 2 === 0 ? 'rotate(2deg)' : 'rotate(-2deg)';
         card.className = `note-card ${note.color || 'yellow'}`;
         card.style.transform = rotation;
+        
+        const reactionsDisplay = (note.reactions || []).join('');
+        
         card.innerHTML = `
             <i class="ph-fill ph-push-pin note-pin"></i>
             <p class="note-text-content">${escapeHTML(note.text)}</p>
+            <div class="note-reactions-display">${reactionsDisplay}</div>
             <span class="note-author">- ${escapeHTML(note.owner)}</span>
+            
+            <div class="note-actions">
+                <button type="button" class="btn-reaction" data-emoji="❤️">❤️</button>
+                <button type="button" class="btn-reaction" data-emoji="😘">😘</button>
+                <button type="button" class="btn-reaction" data-emoji="☕">☕</button>
+            </div>
+            
             <button class="btn-delete-note" title="Apagar recado"><i class="ph ph-trash"></i></button>
         `;
         
-        // MANIPULAÇÃO DIRETA: Eliminar Recado (Post-it)
+        card.querySelectorAll('.btn-reaction').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                triggerHaptic(10);
+                const emoji = e.currentTarget.dataset.emoji;
+                if (!note.reactions) note.reactions = [];
+                note.reactions.push(emoji);
+                
+                store.setNotes([...store.notes]);
+                card.querySelector('.note-reactions-display').innerHTML = note.reactions.join('');
+            });
+        });
+        
         card.querySelector('.btn-delete-note').addEventListener('click', () => {
             triggerHaptic(20);
             if(confirm('Apagar este recadinho?')) {
                 store.setNotes(store.notes.filter(n => n.id !== note.id));
-                card.remove(); // Remove apenas o post-it da interface
+                card.remove(); 
                 if (store.notes.length === 0) renderNotesSection();
             }
         });
@@ -254,6 +309,7 @@ const renderNotesSection = () => {
 export const initHome = () => {
     document.getElementById('home-tasks-card')?.addEventListener('click', () => { triggerHaptic(10); document.querySelector('.nav-item[data-target="view-lists"]')?.click(); });
     document.getElementById('home-fin-card')?.addEventListener('click', () => { triggerHaptic(10); document.querySelector('.nav-item[data-target="view-finances"]')?.click(); });
+    
     document.getElementById('general-overlay')?.addEventListener('click', () => closeAllModals(false));
     document.querySelectorAll('.btn-close-modal').forEach(btn => btn.addEventListener('click', () => closeAllModals(false)));
     
@@ -277,25 +333,20 @@ export const initHome = () => {
     
     document.getElementById('btn-upload-hero')?.addEventListener('click', () => document.getElementById('file-hero-upload')?.click());
     
-    // Atualizado para usar Supabase Storage na foto de capa (Hero)
     document.getElementById('file-hero-upload')?.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         
         const fileExt = file.name.split('.').pop();
         const fileName = `covers/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-
         try {
             const { data, error } = await supabase.storage
                 .from('photos')
                 .upload(fileName, file);
-
             if (error) throw error;
-
             const { data: publicUrlData } = supabase.storage
                 .from('photos')
                 .getPublicUrl(fileName);
-
             store.setProfile({ ...store.profile, heroCover: publicUrlData.publicUrl });
             triggerHaptic(30); renderHome(); closeAllModals(true);
         } catch (err) {
@@ -327,6 +378,7 @@ export const initHome = () => {
                 const todayStr = getLocalDateString(new Date());
                 const currentMoods = store.moods ? { ...store.moods } : { p1: null, p2: null, date: todayStr };
                 currentMoods[targetPerson] = mood.id; currentMoods.date = todayStr;
+                
                 if (typeof store.setMoods === 'function') store.setMoods(currentMoods); else store.moods = currentMoods;
                 triggerHaptic(30); renderHome(); closeAllModals(true);
             });
@@ -334,38 +386,37 @@ export const initHome = () => {
         });
     }
     
-    let memoryPhotoBase64 = null; // Mantemos o nome da variável mas ela vai guardar a URL pública agora
+    let memoryPhotoBase64 = null;
     document.getElementById('btn-open-memory-modal')?.addEventListener('click', () => {
+        editingMemoryId = null; // Garante modo de criação novo
         document.getElementById('form-add-memory')?.reset();
         const prev = document.getElementById('memory-photo-preview');
         if (prev) { prev.style.backgroundImage = 'none'; prev.classList.add('d-none'); }
         memoryPhotoBase64 = null;
         const dateInput = document.getElementById('memory-date');
         if (dateInput) dateInput.value = getLocalDateString(new Date());
+        
+        const modalTitle = document.querySelector('#memory-bottom-sheet .sheet-header h2');
+        if(modalTitle) modalTitle.textContent = "Guardar Memória";
+        
         openModal('memory-bottom-sheet');
     });
     
     document.getElementById('btn-upload-memory-photo')?.addEventListener('click', () => document.getElementById('file-memory-photo')?.click());
     
-    // Atualizado para usar Supabase Storage na foto de Memória
     document.getElementById('file-memory-photo')?.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         const fileExt = file.name.split('.').pop();
         const fileName = `memories/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-
         try {
             const { data, error } = await supabase.storage
                 .from('photos')
                 .upload(fileName, file);
-
             if (error) throw error;
-
             const { data: publicUrlData } = supabase.storage
                 .from('photos')
                 .getPublicUrl(fileName);
-
             memoryPhotoBase64 = publicUrlData.publicUrl;
             
             const prev = document.getElementById('memory-photo-preview');
@@ -386,9 +437,26 @@ export const initHome = () => {
         const date = document.getElementById('memory-date').value;
         const note = document.getElementById('memory-note').value.trim();
         if (!title || !date) return;
-        const newMemory = { id: Date.now(), title, date, note, photo: memoryPhotoBase64 };
-        store.setMemories([...store.memories, newMemory]);
-        triggerHaptic(30); renderHome(); closeAllModals(true);
+        
+        // Verifica se é edição ou criação
+        if (editingMemoryId) {
+            const mem = store.memories.find(m => m.id === editingMemoryId);
+            if (mem) {
+                mem.title = title;
+                mem.date = date;
+                mem.note = note;
+                // Apenas altera a foto se uma nova foi inserida
+                if (memoryPhotoBase64) mem.photo = memoryPhotoBase64;
+            }
+        } else {
+            const newMemory = { id: Date.now(), title, date, note, photo: memoryPhotoBase64 };
+            store.memories.push(newMemory);
+        }
+        
+        store.setMemories([...store.memories]);
+        triggerHaptic(30); 
+        renderHome(); 
+        closeAllModals(true);
     });
     
     document.getElementById('btn-open-note-modal')?.addEventListener('click', () => { document.getElementById('form-add-note')?.reset(); openModal('note-bottom-sheet'); });
@@ -403,7 +471,7 @@ export const initHome = () => {
         const myName = myPersonId === 'p1' ? (store.profile?.p1 || 'P1') : (store.profile?.p2 || 'P2');
         const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString();
         
-        const newNote = { id: Date.now(), text, color, owner: myName, date: new Date().toISOString(), expiresAt: expiresAt };
+        const newNote = { id: Date.now(), text, color, owner: myName, date: new Date().toISOString(), expiresAt: expiresAt, reactions: [] };
         store.setNotes([...(store.notes || []), newNote]);
         triggerHaptic(30); renderHome(); closeAllModals(true);
     });

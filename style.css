@@ -820,3 +820,83 @@ html[data-theme="dark"] .note-card.blue { background-color: #082F49; color: #E0F
     justify-content: space-between;
     align-items: center;
 }
+
+/* ==========================================================================
+   AGENDA - MÊS E SEMANA
+   ========================================================================== */
+.month-grid-container {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    padding: 16px;
+    background: var(--card-bg);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    margin: 8px 0;
+}
+.month-header-day {
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    padding-bottom: 8px;
+}
+.month-day {
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+.month-day:active { transform: scale(0.9); }
+.month-day.empty { cursor: default; }
+.month-day.active { background: var(--primary); color: #FFF; box-shadow: 0 4px 8px rgba(224,122,95,0.3); }
+.month-day .event-dot { width: 4px; height: 4px; background: var(--primary); border-radius: 50%; margin-top: 2px; opacity: 0; }
+.month-day.has-events .event-dot { opacity: 1; }
+.month-day.active.has-events .event-dot { background: #FFF; }
+
+/* ==========================================================================
+   POST-ITS - REAÇÕES
+   ========================================================================== */
+.note-reactions-display {
+    font-size: 1.1rem;
+    margin-top: 4px;
+    min-height: 24px;
+    display: flex;
+    justify-content: center;
+    gap: 2px;
+    flex-wrap: wrap;
+}
+.note-actions {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+    border-top: 1px dashed rgba(0,0,0,0.1);
+    padding-top: 8px;
+}
+.btn-reaction {
+    background: rgba(255,255,255,0.5);
+    border: 1px solid rgba(0,0,0,0.05);
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.1s, background 0.2s;
+}
+.btn-reaction:active {
+    transform: scale(0.85);
+    background: rgba(255,255,255,0.9);
+}

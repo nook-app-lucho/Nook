@@ -2,44 +2,83 @@ import { store } from '../store.js';
 import { triggerHaptic, getLocalDateString, getInitials, escapeHTML, openModal, closeAllModals, enableDesktopScroll } from '../utils.js';
 
 let selectedDateStr = getLocalDateString(new Date());
+let currentAgendaView = 'week';
 
 export const renderDateScroller = () => {
     const scrollerEl = document.getElementById('agenda-date-scroller');
-    if (!scrollerEl) return;
-    scrollerEl.innerHTML = '';
+    const monthGridEl = document.getElementById('agenda-month-grid');
+    if (!scrollerEl || !monthGridEl) return;
     
-    const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
-    const [y, m, d] = selectedDateStr.split('-').map(Number);
-    const baseDate = new Date(y, m - 1, d);
-    
-    for (let i = -4; i <= 10; i++) {
-        const tempDate = new Date(baseDate);
-        tempDate.setDate(baseDate.getDate() + i);
-        const dateStr = getLocalDateString(tempDate);
-        const hasEvent = store.agenda.some(ev => ev.date === dateStr);
+    if (currentAgendaView === 'week') {
+        scrollerEl.classList.remove('d-none');
+        monthGridEl.classList.add('d-none');
+        scrollerEl.innerHTML = '';
         
-        const bubble = document.createElement('div');
-        bubble.className = `date-bubble ${dateStr === selectedDateStr ? 'active' : ''} ${hasEvent ? 'has-events' : ''}`;
-        bubble.innerHTML = `<span class="day-name">${diasSemana[tempDate.getDay()]}</span><span class="day-number">${tempDate.getDate()}</span><div class="event-dot"></div>`;
+        const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+        const [y, m, d] = selectedDateStr.split('-').map(Number);
+        const baseDate = new Date(y, m - 1, d);
         
-        bubble.addEventListener('click', (e) => {
-            triggerHaptic(10);
-            selectedDateStr = dateStr;
+        for (let i = -4; i <= 10; i++) {
+            const tempDate = new Date(baseDate);
+            tempDate.setDate(baseDate.getDate() + i);
+            const dateStr = getLocalDateString(tempDate);
+            const hasEvent = store.agenda.some(ev => ev.date === dateStr);
             
-            // Remove a classe 'active' de todas as bolhas
-            document.querySelectorAll('.date-bubble').forEach(b => b.classList.remove('active'));
-            // Adiciona a classe 'active' apenas na bolha clicada, preservando a árvore DOM
-            e.currentTarget.classList.add('active');
+            const bubble = document.createElement('div');
+            bubble.className = `date-bubble ${dateStr === selectedDateStr ? 'active' : ''} ${hasEvent ? 'has-events' : ''}`;
+            bubble.innerHTML = `<span class="day-name">${diasSemana[tempDate.getDay()]}</span><span class="day-number">${tempDate.getDate()}</span><div class="event-dot"></div>`;
             
-            // Renderiza apenas as listas abaixo
-            renderAgendaView();
-            
-            // Scroll funcionará perfeitamente, já que a bolha não foi destruída
-            e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            bubble.addEventListener('click', (e) => {
+                triggerHaptic(10);
+                selectedDateStr = dateStr;
+                
+                document.querySelectorAll('.date-bubble').forEach(b => b.classList.remove('active'));
+                e.currentTarget.classList.add('active');
+                
+                renderAgendaView();
+                e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+            });
+            scrollerEl.appendChild(bubble);
+        }
+        enableDesktopScroll(scrollerEl);
+    } else {
+        // Visão Mensal
+        scrollerEl.classList.add('d-none');
+        monthGridEl.classList.remove('d-none');
+        monthGridEl.innerHTML = '';
+
+        const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
+        diasSemana.forEach(d => {
+            monthGridEl.insertAdjacentHTML('beforeend', `<div class="month-header-day">${d}</div>`);
         });
-        scrollerEl.appendChild(bubble);
+
+        const [y, m] = selectedDateStr.split('-').map(Number);
+        const firstDay = new Date(y, m - 1, 1).getDay();
+        const daysInMonth = new Date(y, m, 0).getDate();
+
+        // Células vazias do início do mês
+        for (let i = 0; i < firstDay; i++) {
+            monthGridEl.insertAdjacentHTML('beforeend', `<div class="month-day empty"></div>`);
+        }
+
+        for (let i = 1; i <= daysInMonth; i++) {
+            const tempDate = new Date(y, m - 1, i);
+            const dateStr = getLocalDateString(tempDate);
+            const hasEvent = store.agenda.some(ev => ev.date === dateStr);
+
+            const dayDiv = document.createElement('div');
+            dayDiv.className = `month-day ${dateStr === selectedDateStr ? 'active' : ''} ${hasEvent ? 'has-events' : ''}`;
+            dayDiv.innerHTML = `${i}<div class="event-dot"></div>`;
+
+            dayDiv.addEventListener('click', () => {
+                triggerHaptic(10);
+                selectedDateStr = dateStr;
+                renderDateScroller(); 
+                renderAgendaView();
+            });
+            monthGridEl.appendChild(dayDiv);
+        }
     }
-    enableDesktopScroll(scrollerEl);
 };
 
 export const renderAgendaView = () => {
@@ -70,22 +109,47 @@ export const renderAgendaView = () => {
         const [ey, em, ed] = ev.date.split('-');
         const dateTag = showBadge ? `<span class="agenda-date-badge">${ed}/${em}</span>` : '';
         
+        // Lógica de RSVP para o Casal
+        let rsvpSection = '';
+        if (ev.owner === 'Casal') {
+            const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
+            if (ev.createdBy && ev.createdBy !== myPersonId && !ev.confirmed) {
+                rsvpSection = `<button class="action-btn btn-rsvp" style="padding: 4px 10px; font-size: 0.75rem; margin-top: 6px; width: fit-content;"><i class="ph-bold ph-check"></i> Confirmar Ciente</button>`;
+            } else if (ev.confirmed) {
+                rsvpSection = `<div style="font-size: 0.7rem; color: var(--primary); margin-top: 6px; font-weight: 700;"><i class="ph-bold ph-check-double"></i> Ambos cientes</div>`;
+            }
+        }
+        
         const li = document.createElement('li');
         li.className = 'task-item';
         li.innerHTML = `
-            <div class="task-text">
+            <div class="task-text flex-col" style="flex: 1;">
                 <strong class="task-item-title">${safeTitle}</strong>
                 <div class="task-item-subtitle">${dateTag} ${ev.time} ${safeSubtitle ? '- ' + safeSubtitle : ''}</div>
+                ${rsvpSection}
             </div>
             <div class="task-badge ${badgeClass}">${displayOwner}</div>
             <button class="btn-delete-event"><i class="ph ph-trash"></i></button>
         `;
+        
+        // Listener para confirmar ciente (RSVP)
+        const rsvpBtn = li.querySelector('.btn-rsvp');
+        if (rsvpBtn) {
+            rsvpBtn.addEventListener('click', () => {
+                triggerHaptic(15);
+                ev.confirmed = true;
+                store.setAgenda([...store.agenda]);
+                renderAgendaView();
+            });
+        }
+
         li.querySelector('.btn-delete-event').addEventListener('click', () => {
             triggerHaptic(20);
             store.setAgenda(store.agenda.filter(e => e.id !== ev.id));
-            renderDateScroller(); // Aqui o recálculo faz sentido para atualizar os dots
+            renderDateScroller(); 
             renderAgendaView();
         });
+        
         return li;
     };
 
@@ -99,6 +163,25 @@ export const renderAgendaView = () => {
 };
 
 export const initAgenda = () => {
+    // Toggles de visualização
+    document.getElementById('btn-view-week')?.addEventListener('click', (e) => {
+        currentAgendaView = 'week';
+        e.target.classList.add('active');
+        e.target.classList.remove('outline');
+        document.getElementById('btn-view-month')?.classList.remove('active');
+        document.getElementById('btn-view-month')?.classList.add('outline');
+        renderDateScroller();
+    });
+    
+    document.getElementById('btn-view-month')?.addEventListener('click', (e) => {
+        currentAgendaView = 'month';
+        e.target.classList.add('active');
+        e.target.classList.remove('outline');
+        document.getElementById('btn-view-week')?.classList.remove('active');
+        document.getElementById('btn-view-week')?.classList.add('outline');
+        renderDateScroller();
+    });
+
     const jumpDateInput = document.getElementById('agenda-jump-date');
     if (jumpDateInput) {
         jumpDateInput.addEventListener('change', (e) => {
@@ -114,9 +197,9 @@ export const initAgenda = () => {
 
     document.getElementById('btn-go-today')?.addEventListener('click', () => {
         triggerHaptic(10);
-        selectedDateStr = getLocalDateString(new Date()); // Define a data como hoje
-        renderDateScroller(); // Centraliza o carrossel de dias
-        renderAgendaView(); // Atualiza a lista abaixo
+        selectedDateStr = getLocalDateString(new Date()); 
+        renderDateScroller(); 
+        renderAgendaView(); 
     });
 
     const form = document.getElementById('form-add-event');
@@ -124,22 +207,30 @@ export const initAgenda = () => {
         openModal('event-bottom-sheet');
         document.getElementById('event-date').value = selectedDateStr;
     });
+
     form?.addEventListener('submit', (e) => {
         e.preventDefault();
+        
+        const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
+        
         store.setAgenda([...store.agenda, {
             id: Date.now(),
             title: document.getElementById('event-title').value,
             date: document.getElementById('event-date').value,
             time: document.getElementById('event-time').value,
             owner: document.getElementById('event-owner').value,
-            subtitle: document.getElementById('event-subtitle').value
+            subtitle: document.getElementById('event-subtitle').value,
+            createdBy: myPersonId, // Registra quem criou
+            confirmed: false       // Evento nasce como não confirmado
         }]);
+        
         renderDateScroller();
         renderAgendaView();
         triggerHaptic(30);
         closeAllModals(true);
         form?.reset();
     });
+    
     renderDateScroller();
     renderAgendaView();
 };

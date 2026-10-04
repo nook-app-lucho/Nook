@@ -41,13 +41,10 @@ export const getAvatarHtml = (ownerId, size = '28px') => {
     const baseClass = isP1 ? 'my-avatar' : 'partner-avatar';
 
     if (avatarData && avatarData.startsWith('data:image')) {
-        // Foto do perfil (aplica has-photo e background-image)
         return `<div class="task-badge has-photo ${baseClass}" style="width: ${size}; height: ${size}; background-image: url('${avatarData}'); margin-left: 0;"></div>`;
     } else if (avatarData) {
-        // Emoji do perfil (SEM a classe has-photo para não ocultar o texto)
         return `<div class="task-badge ${baseClass}" style="width: ${size}; height: ${size}; font-size: 0.95rem; line-height: 1; margin-left: 0; display: flex; align-items: center; justify-content: center;">${avatarData}</div>`;
     } else {
-        // Iniciais
         return `<div class="task-badge ${baseClass}" style="width: ${size}; height: ${size}; margin-left: 0;">${initials}</div>`;
     }
 };
@@ -55,17 +52,29 @@ export const getAvatarHtml = (ownerId, size = '28px') => {
 export const hasUnsavedChanges = () => {
     const activeBottomSheet = document.querySelector('.bottom-sheet.active');
     if (!activeBottomSheet) return false;
-    const inputs = activeBottomSheet.querySelectorAll('input[type="text"], input[type="number"], textarea');
+    
+    const inputs = activeBottomSheet.querySelectorAll('input:not([type="hidden"]), select, textarea');
     for (const input of inputs) {
-        if (input.value && input.value.trim() !== '') return true;
+        const currentVal = input.type === 'checkbox' ? String(input.checked) : input.value;
+        const originalVal = input.dataset.originalValue || (input.type === 'checkbox' ? 'false' : '');
+        
+        if (currentVal !== originalVal) return true;
     }
     return false;
 };
 
 export const openModal = (modalId) => {
     triggerHaptic(10);
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        // Tira uma "fotografia" do estado de cada campo na abertura do modal
+        const inputs = modal.querySelectorAll('input:not([type="hidden"]), select, textarea');
+        inputs.forEach(input => {
+            input.dataset.originalValue = input.type === 'checkbox' ? String(input.checked) : input.value;
+        });
+    }
     document.getElementById('general-overlay')?.classList.add('active');
-    document.getElementById(modalId)?.classList.add('active');
+    modal?.classList.add('active');
 };
 
 export const closeAllModals = (force = false) => {
