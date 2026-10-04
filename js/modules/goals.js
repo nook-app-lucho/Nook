@@ -14,8 +14,21 @@ export const renderGoals = () => {
     goalsContainer.innerHTML = '';
     
     if (!store.goals || store.goals.length === 0) {
-        goalsContainer.innerHTML = `<div class="empty-state padded-lg">Nenhuma meta cadastrada. Clique no + acima para começar!</div>`;
-    } else {
+    goalsContainer.innerHTML = `
+        <div class="dash-card flex-col align-center text-center gap-12" style="padding: 32px 16px;">
+            <div class="dash-icon bg-primary-light mb-8" style="width: 72px; height: 72px; font-size: 2rem; display: flex; align-items: center; justify-content: center; border-radius: 50%;">
+                <i class="ph-fill ph-flag text-primary"></i>
+            </div>
+            <p class="mb-0 text-muted" style="font-size: 0.95rem;">Ainda não possui nenhuma meta.</p>
+            <button class="btn-primary btn-outline-primary mt-8" id="btn-empty-create-goal" style="width: auto; padding: 12px 24px;">
+                Criar a Primeira Meta
+            </button>
+        </div>
+    `;
+    document.getElementById('btn-empty-create-goal')?.addEventListener('click', () => {
+        openModal('goal-bottom-sheet');
+    });
+} else {
         store.goals.forEach(goal => {
             if (goal.type === 'financial') totalSaved += goal.current;
             

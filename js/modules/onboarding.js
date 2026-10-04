@@ -7,7 +7,24 @@ let tempAvatarP1 = null;
 let tempAvatarP2 = null; 
 let currentTargetPerson = null; 
 
-const EMOJI_LIST = ['🥰', '❤️', '😊', '😍', '🥳', '😎', '😴', '🙈', '🐱', '🐶', '👑', '✨', '🔥', '🥐', '☕', '🍕', '🍟', '🍷', '🍻', '🥑'];
+const EMOJI_LIST = [
+    // 🐶 Animais e Bichinhos
+    '🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐻‍❄️', '🐨', 
+    '🐯', '🦁', '🐮', '🐷', '🐸', '🐵', '🙈', '🐧', '🐤', '🦆', 
+    '🦉', '🦄', '🐝', '🦋', '🐢', '🐙', '🐬', '🦥', '🦦', '🦩',
+
+    // 🥰 Expressões e Vibes
+    '🥰', '😊', '😍', '🤩', '🥳', '😎', '🤪', '😴', '😇', '🥹', 
+    '🤗', '🫠', '🤖', '👻', '👑', '👒', '🧢',
+
+    // ❤️ Amor e Símbolos
+    '❤️', '💖', '💕', '💓', '💘', '✨', '🔥', '🌈', '🌸', '🌺', 
+    '🍀', '☀️', '🌙', '🪐', '🎨', '🎧', '⚽',
+
+    // ☕ Comidas e Bebidas
+    '🥐', '☕', '🍕', '🍟', '🍷', '🍻', '🥑', '🍔', '🌮', '🍣', 
+    '🍩', '🍦', '🧋', '🍓', '🍎', '🍉', '🍾'
+];
 
 export const renderAvatar = (elements, name, avatarData) => {
     elements.forEach(el => {
