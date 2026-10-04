@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nook - Gestão a Dois</title>
+    <link rel="icon" type="image/svg+xml" href="img/icon.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="img/icon-192.png">
+    <link rel="apple-touch-icon" href="img/icon-192.png">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#E07A5F">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Nook">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/@phosphor-icons/web" defer></script>
+    
+    <script>
+    (function() {
+        try {
+            var localTheme = localStorage.getItem('nook_theme');
+            var theme = localTheme ? JSON.parse(localTheme) : 'system';
+            var isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        } catch (e) {}
+    })();
+    </script>
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css">
+    <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js" defer></script>
+    <script>
+    window.addEventListener('DOMContentLoaded', () => {
+        MobileDragDrop.polyfill({ holdToDrag: 250 });
+        window.addEventListener('touchmove', function() {}, {passive: false});
+    });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js" defer></script>
+</head>
+<body>
+    <main class="app-container">
+        <!-- TELA DE LOGIN / CADASTRO -->
+        <div id="view-login" class="view">
+            <section class="hero-dashboard hero-login">
+                <div class="hero-overlay"></div>
+                <div class="hero-content auth-hero-content">
+                    <h1 class="hero-title-sm" id="auth-title">Nook</h1>
+                    <span class="hero-subtitle" id="auth-subtitle">Entre para acessar o espaço do casal.</span>
+                </div>
+            </section>
+            
+            <form id="form-login" class="dash-card form-card">
+                <div class="form-group mb-0">
+                    <label for="login-email">E-mail</label>
+                    <input type="email" id="login-email" class="form-control" placeholder="seu@email.com" required>
+                </div>
+                <div class="form-group mb-0">
+                    <label for="login-password">Senha</label>
+                    <input type="password" id="login-password" class="form-control" placeholder="••••••••" required minlength="6">
+                </div>
+                <span id="login-error" class="error-msg d-none">E-mail ou senha incorretos.</span>
+                <button type="submit" class="btn-primary" id="btn-auth-submit">Entrar no Nook</button>
+                <button type="button" id="btn-toggle-auth" class="btn-link">Não tem conta? Criar conta nova</button>
+            </form>
+        </div>
+
+        <!-- TELA DE CONTA EM ANÁLISE / AGUARDANDO LIBERAÇÃO -->
+        <div id="view-pending-approval" class="view">
+            <section class="hero-dashboard hero-pending">
+                <div class="hero-overlay"></div>
+                <div class="hero-content auth-hero-content">
+                    <h1 class="hero-title-sm">Conta em Análise</h1>
+                    <span class="hero-subtitle">Falta pouquinho para acessar o Nook!</span>
+                </div>
+            </section>
+            
+            <div class="dash-card dash-card-center">
+                <div class="icon-3xl">⏳</div>
+                <h3 class="card-title-lg">Acesso Pendente de Liberação</h3>
+                <p class="text-muted-sm">Sua conta foi criada com sucesso! Por motivos de segurança durante nossa fase de testes, o administrador precisa aprovar seu acesso.</p>
+                <span class="badge-status">Status: Aguardando Aprovação</span>
+                <button id="btn-pending-logout" class="btn-primary btn-outline-danger">Sair da Conta</button>
+            </div>
+        </div>
+
+        <!-- TELA DE CRIAR OU ENTRAR NO ESPAÇO -->
+        <div id="view-join" class="view">
+            <section class="hero-dashboard hero-pending">
+                <div class="hero-overlay"></div>
+                <div class="hero-content auth-hero-content">
+                    <h1 class="hero-title-sm">Criar ou Entrar</h1>
+                    <span class="hero-subtitle">Conecte-se com seu parceiro(a).</span>
+                </div>
+            </section>
+            
+            <div class="dash-card dash-card-col mb-16">
+                <h3 class="card-title">Começar um novo Nook</h3>
+                <p class="card-subtitle">Crie o espaço do casal e gere um código para convidar seu amor.</p>
+                <button id="btn-create-nook" class="btn-primary">Criar Nosso Espaço</button>
+            </div>
+            
+            <div class="dash-card dash-card-col">
+                <h3 class="card-title">Já tem um convite?</h3>
+                <p class="card-subtitle">Insira o código de 6 letras que seu parceiro(a) gerou.</p>
+                <input type="text" id="input-invite-code" class="form-control input-code" placeholder="Ex: ABCDEF">
+                <button id="btn-join-nook" class="btn-primary btn-outline-primary">Entrar no Espaço</button>
+                <span id="join-error" class="error-msg text-center d-none">Código inválido ou espaço lotado.</span>
+            </div>
+            
+            <button id="btn-join-logout" class="btn-danger-link">
+                <i class="ph ph-sign-out mr-4"></i> Sair da Conta / Voltar ao Login
+            </button>
+        </div>
+
+        <!-- ONBOARDING -->
+        <div id="view-onboarding" class="view view-onboarding">
+            <section class="hero-dashboard hero-sm">
+                <div class="hero-overlay"></div>
+                <div class="hero-content auth-hero-content">
+                    <h1 class="hero-title-sm">Boas-vindas ao Nook</h1>
+                    <span class="hero-subtitle">Sua vida a dois, organizada em um só lugar.</span>
+                </div>
+            </section>
+            
+            <form id="form-onboarding" class="dash-card form-card">
+                <div class="form-group mb-0">
+                    <label>Seu Perfil (Você)</label>
+                    <div class="avatar-input-group">
+                        <div id="preview-p1" class="user-avatar my-avatar avatar-lg"></div>
+                        <div class="flex-col-1 gap-8">
+                            <input type="text" id="onboarding-p1" class="form-control" placeholder="Nome ou Iniciais" required>
+                            <div class="flex-gap-6">
+                                <button type="button" class="btn-avatar-opt" id="btn-foto-p1"><i class="ph ph-camera"></i> Foto</button>
+                                <button type="button" class="btn-avatar-opt" id="btn-emoji-p1"><i class="ph ph-smiley"></i> Emoji</button>
+                            </div>
+                            <input type="file" id="file-p1" accept="image/*" class="d-none">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-0">
+                    <label>Perfil do Parceiro(a)</label>
+                    <div class="avatar-input-group">
+                        <div id="preview-p2" class="user-avatar partner-avatar avatar-lg"></div>
+                        <div class="flex-col-1 gap-8">
+                            <input type="text" id="onboarding-p2" class="form-control" placeholder="Nome ou Iniciais" required>
+                            <div class="flex-gap-6">
+                                <button type="button" class="btn-avatar-opt" id="btn-foto-p2"><i class="ph ph-camera"></i> Foto</button>
+                                <button type="button" class="btn-avatar-opt" id="btn-emoji-p2"><i class="ph ph-smiley"></i> Emoji</button>
+                            </div>
+                            <input type="file" id="file-p2" accept="image/*" class="d-none">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mb-0">
+                    <label for="onboarding-date">Data de Início do Relacionamento</label>
+                    <input type="date" id="onboarding-date" class="form-control" required>
+                </div>
+                
+                <button type="submit" class="btn-primary mt-8">Começar Nossa Jornada</button>
+            </form>
+        </div>
+
+        <!-- TELA 1: HOME -->
+        <div id="view-home" class="view">
+            <section class="hero-dashboard" id="main-hero">
+                <button id="btn-edit-hero" class="btn-icon btn-edit-hero"><i class="ph ph-camera"></i></button>
+                <div class="hero-overlay"></div>
+                <div class="hero-content">
+                    <div class="avatar-group">
+                        <div class="user-avatar partner-avatar" id="home-avatar-p2">VO</div>
+                        <div class="user-avatar my-avatar" id="home-avatar-p1">IS</div>
+                    </div>
+                    <h1 id="dynamic-greeting">Olá, casal!</h1>
+                    <div class="days-counter">
+                        <i class="ph-fill ph-calendar-heart"></i>
+                        <span>Juntos há <strong id="days-together">--</strong> dias</span>
+                    </div>
+                </div>
+            </section>
+            
+<section class="tasks-section mt-16">
+    <h3 class="section-title">COMO ESTAMOS HOJE?</h3>
+    <div class="flex-gap-12">
+        <!-- Cartão P1 -->
+        <div class="dash-card mood-card" id="btn-mood-p1">
+            <div class="mood-user-header">
+                <div id="mood-avatar-p1"></div>
+                <strong id="mood-name-p1" class="mood-user-name">--</strong>
+            </div>
+            <span id="mood-icon-p1" class="mood-icon">💭</span>
+            <span id="mood-text-p1" class="mood-text">Como está?</span>
+        </div>
+
+        <!-- Cartão P2 -->
+        <div class="dash-card mood-card" id="btn-mood-p2">
+            <div class="mood-user-header">
+                <div id="mood-avatar-p2"></div>
+                <strong id="mood-name-p2" class="mood-user-name">--</strong>
+            </div>
+            <span id="mood-icon-p2" class="mood-icon">💭</span>
+            <span id="mood-text-p2" class="mood-text">Como está?</span>
+        </div>
+    </div>
+</section>
+            
+            <section class="tasks-section mt-24">
+                <div class="section-header">
+                    <h3 class="section-title mb-0">MURAL DE RECADOS</h3>
+                    <button id="btn-open-note-modal" class="btn-today btn-today-outline">
+                        <i class="ph ph-push-pin mr-4"></i> Novo
+                    </button>
+                </div>
+                <div id="home-notes-grid" class="notes-grid"></div>
+            </section>
+            
+            <!-- CÁPSULA DO TEMPO -->
+            <section id="home-capsule-card" class="dash-card capsule-card d-none">
+                <div id="capsule-bg" class="capsule-bg-overlay"></div>
+                <div class="capsule-content">
+                    <div class="capsule-header">
+                        <i class="ph-bold ph-hourglass-high"></i>
+                        <span id="capsule-title">Cápsula do Tempo</span>
+                    </div>
+                    <span id="capsule-text" class="capsule-title-text">Carregando lembrança...</span>
+                </div>
+            </section>
+            
+            <section class="tasks-section mt-24">
+                <div class="section-header">
+                    <h3 class="section-title mb-0">NOSSA LINHA DO TEMPO</h3>
+                    <button id="btn-open-memory-modal" class="btn-today btn-today-outline">
+                        <i class="ph ph-plus mr-4"></i> Nova Memória
+                    </button>
+                </div>
+                <div id="home-memories-grid" class="memories-grid"></div>
+            </section>
+            
+            <section class="tasks-section mt-16">
+                <h3 class="section-title">RESUMO</h3>
+                <div class="dashboard-cards">
+                    <div class="dash-card cursor-pointer" id="home-tasks-card">
+                        <div class="dash-icon bg-primary-light">
+                            <i class="ph-fill ph-check-square-offset text-primary"></i>
+                        </div>
+                        <div class="dash-info">
+                            <span class="dash-title">Tarefas pendentes</span>
+                            <span class="dash-value" id="home-tasks-desc">Calculando...</span>
+                        </div>
+                        <i class="ph ph-caret-right text-muted"></i>
+                    </div>
+                    <div class="dash-card cursor-pointer" id="home-fin-card">
+                        <div class="dash-icon bg-pink-light" id="home-fin-icon">
+                            <i class="ph-fill ph-wallet text-pink"></i>
+                        </div>
+                        <div class="dash-info">
+                            <span class="dash-title">Contas da semana</span>
+                            <span class="dash-value" id="home-fin-desc">Calculando...</span>
+                        </div>
+                        <i class="ph ph-caret-right text-muted"></i>
+                    </div>
+                </div>
+            </section>
+            
+            <section class="tasks-section mt-24">
+                <h3 class="section-title">O QUE TEMOS PRA HOJE?</h3>
+                <div class="task-group">
+                    <ul class="task-list" id="home-agenda-list"></ul>
+                </div>
+            </section>
+        </div>
+
+        <!-- TELA 2: LISTAS -->
+        <div id="view-lists" class="view">
+            <header class="top-brand-bar">
+                <div class="brand-greeting"><span class="greeting-text">Listas</span></div>
+            </header>
+            
+            <section class="header">
+                <div class="header-top">
+                    <h1 id="active-list-header-title">Atividades</h1>
+                     <button class="btn-icon" id="btn-list-options"><i class="ph ph-dots-three-circle"></i></button>
+                </div>
+            </section>
+            
+            <section class="metrics">
+                <div class="metric-card"><span class="metric-label">Listas</span><span class="metric-value" id="metric-lists-count">0</span></div>
+                <div class="metric-card"><span class="metric-label">Pendentes</span><span class="metric-value" id="metric-pending-count">0</span></div>
+            </section>
+            
+            <div class="tabs-header-wrapper">
+    <nav class="tabs" id="lists-tabs-container"></nav>
+    <button type="button" class="btn-see-all-tabs" id="btn-open-all-lists" title="Ver todas as listas">
+        <i class="ph ph-squares-four"></i> Ver Todas
+    </button>
+</div>
+            
+            <div class="list-actions">
+                <button class="action-btn" id="btn-list-archive"><i class="ph ph-archive-box"></i> Arquivar Concluídas</button>
+            </div>
+            
+            <form id="form-add-task" class="add-item-bar">
+                <div class="input-group">
+                    <select id="input-task-owner" class="select-transparent">
+                        <option value="Casal">Nós</option>
+                        <option value="IS" id="opt-owner-p1">P1</option>
+                        <option value="VO" id="opt-owner-p2">P2</option>
+                    </select>
+                    <input type="text" id="input-task-text" placeholder="Adicionar novo item..." required autocomplete="off">
+                    <button type="submit" class="btn-add"><i class="ph ph-arrow-up"></i></button>
+                </div>
+            </form>
+            
+            <!-- BANNER DO SORTEADOR -->
+            <div id="decision-roulette-banner" class="dash-card roulette-banner d-none">
+                <div class="flex-gap-12 align-center">
+                    <div class="roulette-icon-wrapper">🎲</div>
+                    <div>
+                        <strong id="decision-banner-title" class="roulette-title">Em dúvida do que escolher?</strong>
+                        <span class="roulette-subtitle">Deixe o Nook sortear por vocês hoje!</span>
+                    </div>
+                </div>
+                <button id="btn-trigger-roulette" class="btn-today btn-roulette-action">
+                    Decidir por Nós
+                </button>
+            </div>
+            
+            <section class="tasks-section">
+                <h3 class="section-title" id="lists-section-title">PENDENTES</h3>
+                <div class="task-group">
+                    <ul class="task-list" id="task-list-container"></ul>
+                </div>
+            </section>
+        </div>
+
+        <!-- TELA 3: FINANÇAS -->
+        <div id="view-finances" class="view">
+            <header class="top-brand-bar">
+                <div class="brand-greeting"><span class="greeting-text">Finanças</span></div>
+                <div class="flex-gap-8">
+                    <button class="btn-icon" id="btn-open-fin-setup" title="Configurar regras"><i class="ph ph-sliders-horizontal"></i></button>
+                </div>
+            </header>
+            
+            <div id="fin-setup-banner" class="dash-card fin-banner">
+                <div class="dash-icon bg-primary text-white"><i class="ph-fill ph-sparkle"></i></div>
+                <div class="dash-info">
+                    <span class="dash-title" id="fin-banner-title">Como vocês dividem as contas?</span>
+                    <span class="dash-value" id="fin-banner-subtitle">Clique aqui para personalizar o calculador do casal.</span>
+                </div>
+                <i class="ph ph-caret-right text-muted"></i>
+            </div>
+            
+            <div id="fin-settlement-card" class="dash-card fin-settlement d-none">
+                <div class="dash-icon bg-primary text-white"><i class="ph-fill ph-scales"></i></div>
+                <div class="dash-info">
+                    <span class="dash-title settlement-label">Acerto do Mês</span>
+                    <span class="dash-value settlement-value" id="fin-settlement-text">Calculando...</span>
+                </div>
+            </div>
+            
+            <div id="fin-chart-card" class="dash-card chart-card d-none">
+                <span class="chart-title">Para onde vai o dinheiro</span>
+                <div id="fin-chart-bar" class="chart-bar-container"></div>
+                <div id="fin-chart-legend" class="chart-legend"></div>
+            </div>
+            
+            <section class="metrics" id="fin-metrics-container">
+                <div class="metric-card">
+                    <span class="metric-label" id="label-fin-m1">Total em Contas</span>
+                    <span class="metric-value" id="val-fin-m1">R$ 0,00</span>
+                </div>
+                <div class="metric-card">
+                    <span class="metric-label" id="label-fin-m2">Divisão Ativa</span>
+                    <span class="metric-value metric-value-primary" id="val-fin-m2">50 / 50</span>
+                </div>
+            </section>
+            
+            <div id="fin-proportional-bar-container" class="proportional-bar-container d-none">
+                <div class="proportional-labels">
+                    <span><span id="prop-label-is">P1: </span><strong id="prop-val-is">50%</strong></span>
+                    <span><span id="prop-label-vo">P2: </span><strong id="prop-val-vo">50%</strong></span>
+                </div>
+                <div class="progress-bar"><div id="prop-fill-is" class="progress-fill" style="width: 50%;"></div></div>
+            </div>
+            
+            <button id="btn-big-add-expense" class="btn-primary btn-big-add">
+                <i class="ph-bold ph-plus-circle icon-xl"></i> Adicionar Novo Gasto
+            </button>
+            
+            <section class="tasks-section">
+                <h3 class="section-title">PRÓXIMOS VENCIMENTOS DA CASA</h3>
+                <div class="task-group"><ul class="task-list" id="expenses-list-container"></ul></div>
+            </section>
+            
+            <section class="tasks-section mt-24">
+                <div class="section-header mb-8">
+                    <h3 class="section-title mb-0">HISTÓRICO (PAGAS)</h3>
+                    <input type="month" id="fin-history-month" class="form-control input-month">
+                </div>
+                <div class="task-group"><ul class="task-list" id="expenses-history-list"></ul></div>
+            </section>
+        </div>
+
+        <!-- TELA 4: AGENDA -->
+        <div id="view-agenda" class="view">
+            <header class="top-brand-bar">
+                <div class="brand-greeting agenda-header-actions">
+                    <span class="greeting-text">Agenda</span>
+                    <button type="button" id="btn-go-today" class="btn-today">Hoje</button>
+                    <label for="agenda-jump-date" class="btn-jump-date" title="Ir para data">
+                        <i class="ph ph-calendar-blank text-primary mr-4 icon-md"></i>
+                        <span class="text-primary-bold">Buscar</span>
+                    </label>
+                    <input type="date" id="agenda-jump-date" class="hidden-input">
+                </div>
+                <button class="btn-icon" id="btn-open-event-modal"><i class="ph ph-plus-circle"></i></button>
+            </header>
+            
+            <section class="date-scroller-container"><div class="date-scroller" id="agenda-date-scroller"></div></section>
+            
+            <section class="tasks-section mt-16">
+                <h3 class="section-title" id="agenda-selected-title">HOJE</h3>
+                <div class="task-group"><ul class="task-list" id="agenda-selected-list"></ul></div>
+            </section>
+            
+            <section class="tasks-section mt-24">
+                <h3 class="section-title">PRÓXIMOS COMPROMISSOS</h3>
+                <div class="task-group"><ul class="task-list" id="agenda-all-list"></ul></div>
+            </section>
+        </div>
+
+        <!-- TELA 5: METAS -->
+        <div id="view-goals" class="view">
+            <header class="top-brand-bar">
+                <div class="brand-greeting"><span class="greeting-text">Metas</span></div>
+                <button class="btn-icon" id="btn-open-goal-modal"><i class="ph ph-plus-circle"></i></button>
+            </header>
+            <section class="metrics">
+                <div class="metric-card"><span class="metric-label">Guardado (Metas)</span><span class="metric-value" id="metric-goals-saved">R$ 0</span></div>
+                <div class="metric-card"><span class="metric-label">Metas Ativas</span><span class="metric-value" id="metric-goals-count">0</span></div>
+            </section>
+            <section class="dashboard-cards" id="goals-list-container"></section>
+        </div>
+
+        <!-- TELA 6: AJUSTES -->
+        <div id="view-settings" class="view">
+            <header class="top-brand-bar">
+                <div class="brand-greeting"><span class="greeting-text">Ajustes</span></div>
+            </header>
+            
+           <section class="tasks-section">
+    <!-- Bloco 1: Informações e Configurações Seguras -->
+    <div class="task-group mb-16">
+        <ul class="task-list">
+            <li class="task-item setting-item cursor-pointer" id="btn-reopen-onboarding">
+                <i class="ph ph-heart text-muted icon-lg"></i>
+                <span class="task-text">Perfil do Casal (Onboarding)</span>
+                <i class="ph ph-caret-right text-muted"></i>
+            </li>
+            <li class="task-item setting-item cursor-pointer" id="btn-open-theme-modal">
+                <i class="ph ph-palette text-muted icon-lg"></i>
+                <span class="task-text">Aparência</span>
+                <span id="current-theme-label" class="theme-label">Sistema</span>
+                <i class="ph ph-caret-right text-muted"></i>
+            </li>
+            <li class="task-item setting-item cursor-default">
+                <i class="ph ph-link text-muted icon-lg"></i>
+                <span class="task-text">Código do Casal: <strong id="setting-invite-code" class="text-primary">---</strong></span>
+            </li>
+        </ul>
+    </div>
+
+    <!-- Bloco 2: Zona de Perigo (Destacada) -->
+    <div class="task-group">
+        <ul class="task-list">
+            <li class="task-item setting-item setting-item-danger text-center" id="btn-logout-app">
+                <i class="ph ph-sign-out icon-lg"></i>
+                <span class="task-text font-bold">Sair da Conta</span>
+            </li>
+        </ul>
+    </div>
+</section>
+        </div>
+        
+        <div class="spacer"></div>
+        
+        <nav class="bottom-bar">
+            <a href="#" class="nav-item active" data-target="view-home"><i class="ph-fill ph-house"></i><span>Início</span></a>
+            <a href="#" class="nav-item" data-target="view-finances"><i class="ph ph-wallet"></i><span>Finanças</span></a>
+            <a href="#" class="nav-item" data-target="view-lists"><i class="ph ph-check-square-offset"></i><span>Listas</span></a>
+            <a href="#" class="nav-item" data-target="view-agenda"><i class="ph ph-calendar-blank"></i><span>Agenda</span></a>
+            <a href="#" class="nav-item" data-target="view-goals"><i class="ph ph-flag"></i><span>Metas</span></a>
+            <a href="#" class="nav-item" data-target="view-settings"><i class="ph ph-gear"></i><span>Ajustes</span></a>
+        </nav>
+
+        <!-- MODAIS OVERLAYS -->
+        <div class="modal-overlay" id="general-overlay"></div>
+        
+        <!-- Modal: Evento -->
+        <div class="bottom-sheet" id="event-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Novo Compromisso</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="form-add-event" class="sheet-body">
+                <div class="form-group"><label>Título</label><input type="text" id="event-title" class="form-control" required></div>
+                <div class="form-row">
+                    <div class="form-group flex-1"><label>Data</label><input type="date" id="event-date" class="form-control" required></div>
+                    <div class="form-group flex-1"><label>Horário</label><input type="time" id="event-time" class="form-control" required></div>
+                </div>
+                <div class="form-group">
+                    <label>De quem é?</label>
+                    <select id="event-owner" class="form-control">
+                        <option value="Casal">Nós dois (Casal)</option>
+                        <option value="IS">IS</option>
+                        <option value="VO">VO</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>Local / Nota</label><input type="text" id="event-subtitle" class="form-control"></div>
+                <button type="submit" class="btn-primary">Salvar Compromisso</button>
+            </form>
+        </div>
+        
+        <!-- Modal: Editar Atividade -->
+        <div class="bottom-sheet" id="task-edit-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Editar Atividade</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="form-edit-task" class="sheet-body">
+                <input type="hidden" id="edit-task-id">
+                <div class="form-group">
+                    <label>O que precisa ser feito?</label>
+                    <input type="text" id="edit-task-text" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>De quem é?</label>
+                    <select id="edit-task-owner" class="form-control">
+                        <option value="Casal">Nós dois (Casal)</option>
+                        <option value="IS" id="opt-edit-task-p1">P1</option>
+                        <option value="VO" id="opt-edit-task-p2">P2</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary">Atualizar Tarefa</button>
+            </form>
+        </div>
+        
+        <!-- Modal: Conta / Gasto -->
+        <div class="bottom-sheet" id="expense-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2 id="expense-modal-title">Nova Conta</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="form-add-expense" class="sheet-body">
+                <input type="hidden" id="expense-id">
+                <div class="form-group"><label>Descrição da Conta</label><input type="text" id="expense-title" class="form-control" placeholder="Ex: Luz, Ifood" required></div>
+                <div class="form-row">
+                    <div class="form-group flex-1"><label>Valor (R$)</label><input type="number" id="expense-amount" class="form-control" placeholder="150.00" min="0.01" step="0.01" required></div>
+                    <div class="form-group flex-1"><label>Vencimento</label><input type="date" id="expense-date" class="form-control" required></div>
+                </div>
+                <div class="form-group">
+                    <label>Categoria</label>
+                    <select id="expense-category" class="form-control">
+                        <option value="moradia">🏠 Moradia (Aluguel, Luz)</option>
+                        <option value="mercado">🛒 Mercado e Alimentação</option>
+                        <option value="transporte">🚗 Transporte (Combustível, App)</option>
+                        <option value="lazer">🍿 Lazer e Assinaturas</option>
+                        <option value="outros">📦 Outros</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Quem é responsável?</label>
+                    <select id="expense-owner" class="form-control">
+                        <option value="Casal">Nós dois (Casal)</option>
+                        <option value="IS" id="opt-expense-owner-p1">P1</option>
+                        <option value="VO" id="opt-expense-owner-p2">P2</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary" id="btn-submit-expense">Salvar Conta</button>
+            </form>
+        </div>
+
+        <!-- Modal: Config Finanças -->
+        <div class="bottom-sheet" id="fin-setup-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Como é a divisão?</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="form-fin-setup" class="sheet-body">
+                <div class="form-group">
+                    <label>Modelo de Divisão</label>
+                    <select id="fin-model-select" class="form-control" required>
+                        <option value="50/50">Divisão 50/50 (Metade cada)</option>
+                        <option value="proportional">Proporcional à renda</option>
+                        <option value="100-p1" id="opt-100-p1">100% P1</option>
+                        <option value="100-p2" id="opt-100-p2">100% P2</option>
+                        <option value="single">Conta Conjunta Única</option>
+                        <option value="custom">Contas Fixas Separadas</option>
+                    </select>
+                </div>
+                <div id="fin-income-inputs" class="fin-income-wrapper d-none">
+                    <div class="form-row">
+                        <div class="form-group flex-1 mb-0"><label id="label-fin-inc-p1">P1 (R$)</label><input type="number" id="fin-income-is" class="form-control"></div>
+                        <div class="form-group flex-1 mb-0"><label id="label-fin-inc-p2">P2 (R$)</label><input type="number" id="fin-income-vo" class="form-control"></div>
+                    </div>
+                </div>
+                <div class="form-group" id="fin-settle-mode-group">
+                    <label>Como fazer o acerto?</label>
+                    <select id="fin-settle-mode-select" class="form-control">
+                        <option value="prioritize">Priorizar próximos boletos</option>
+                        <option value="transfer">Transferência Direta (Pix)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary">Salvar Preferências</button>
+            </form>
+        </div>
+
+        <!-- Modal: Capa Hero -->
+        <div class="bottom-sheet" id="hero-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Capa do Nook</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="sheet-body">
+                <button id="btn-upload-hero" class="btn-primary btn-secondary mb-16">
+                    <i class="ph ph-upload-simple"></i> Enviar Nossa Foto
+                </button>
+                <input type="file" id="file-hero-upload" accept="image/*" class="d-none">
+                <span class="sheet-sublabel">OU ESCOLHA UMA OPÇÃO:</span>
+                <div id="hero-gallery-grid" class="hero-gallery-grid"></div>
+            </div>
+        </div>
+        
+        <!-- Modal: Nova Meta -->
+        <div class="bottom-sheet" id="goal-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header"><h2>Nova Meta</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
+            <form id="form-add-goal" class="sheet-body">
+                <div class="form-group"><label>Tipo</label><select id="goal-type" class="form-control"><option value="financial">Financeira</option><option value="habit">Hábito</option></select></div>
+                <div class="form-group"><label>Título</label><input type="text" id="goal-title" class="form-control" required></div>
+<div class="form-row">
+    <div class="form-group flex-1">
+        <label>Ícone</label>
+        <input type="hidden" id="goal-icon" value="🎯">
+        <button type="button" id="btn-select-goal-icon" class="form-control btn-goal-icon-picker">
+            <span id="goal-icon-preview">🎯</span>
+            <i class="ph ph-caret-down text-muted"></i>
+        </button>
+    </div>
+    <div class="form-group" style="flex: 2;">
+        <label>Responsável</label>
+        <select id="goal-owner" class="form-control">
+            <option value="Casal">Nós</option>
+            <option value="IS">P1</option>
+            <option value="VO">P2</option>
+        </select>
+    </div>
+</div>
+<div class="form-group mb-16">
+    <label>Sugestões de Ícones</label>
+    <div id="goal-icon-presets" class="preset-icons-grid"></div>
+</div>
+                <div id="group-goal-financial" class="goal-financial-group">
+                    <div class="form-row">
+                        <div class="form-group flex-1 mb-0"><label>Alvo</label><input type="number" id="goal-target-fin" class="form-control"></div>
+                        <div class="form-group flex-1 mb-0"><label>Inicial</label><input type="number" id="goal-initial-fin" class="form-control"></div>
+                    </div>
+                    <div class="form-group mb-0"><label>Prazo</label><input type="date" id="goal-deadline-fin" class="form-control"></div>
+                </div>
+                <div id="group-goal-habit" class="form-row d-none">
+                    <div class="form-group flex-1"><label>Repetições</label><input type="number" id="goal-target-habit" class="form-control"></div>
+                    <div class="form-group flex-1"><label>Unidade</label><input type="text" id="goal-unit-habit" class="form-control"></div>
+                </div>
+                <button type="submit" class="btn-primary">Criar Meta</button>
+            </form>
+        </div>
+        
+        <!-- Modal: Guardar Dinheiro -->
+        <div class="bottom-sheet" id="deposit-bottom-sheet">
+            <div class="sheet-handle"></div><div class="sheet-header"><h2>Guardar Dinheiro</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
+            <form id="form-add-deposit" class="sheet-body"><input type="hidden" id="deposit-goal-id"><div class="form-group"><label>Valor (R$)</label><input type="number" id="deposit-amount" class="form-control" required></div><button type="submit" class="btn-primary">Confirmar</button></form>
+        </div>
+        
+        <!-- Modal: Opções de Lista -->
+        <div class="bottom-sheet" id="list-options-bottom-sheet">
+            <div class="sheet-handle"></div><div class="sheet-header"><h2 id="list-options-title">Opções</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
+            <div class="sheet-body flex-col gap-12">
+                <button id="btn-rename-list" class="btn-primary btn-secondary"><i class="ph ph-pencil-simple"></i> Renomear Lista</button>
+                <button id="btn-delete-list" class="btn-primary btn-danger-light"><i class="ph ph-trash"></i> Excluir Lista Inteira</button>
+            </div>
+        </div>
+        
+        <!-- Modal: Humor -->
+        <div class="bottom-sheet" id="mood-bottom-sheet">
+            <div class="sheet-handle"></div><div class="sheet-header"><h2 id="mood-modal-title">Como está hoje?</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
+            <div class="sheet-body flex-col gap-8" id="mood-options-container"></div>
+        </div>
+        
+        <!-- Modal: Temas -->
+        <div class="bottom-sheet" id="theme-bottom-sheet">
+            <div class="sheet-handle"></div><div class="sheet-header"><h2>Aparência</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
+            <div class="sheet-body flex-col gap-12">
+                <button class="btn-theme-option btn-primary btn-secondary" data-theme-value="system">Sistema</button>
+                <button class="btn-theme-option btn-primary btn-secondary" data-theme-value="light">Claro</button>
+                <button class="btn-theme-option btn-primary btn-secondary" data-theme-value="dark">Escuro</button>
+            </div>
+        </div>
+        
+        <!-- Modal: Emoji -->
+        <div class="bottom-sheet" id="emoji-picker-sheet">
+            <div class="sheet-handle"></div><div class="sheet-header"><h2>Escolha um Emoji</h2><button class="btn-icon btn-close-modal" id="btn-close-emoji-picker"><i class="ph ph-x"></i></button></div>
+            <div class="sheet-body"><div id="emoji-grid" class="emoji-grid"></div></div>
+        </div>
+        
+        <!-- Modal: Histórico de Metas -->
+        <div class="bottom-sheet" id="goal-history-bottom-sheet">
+            <div class="sheet-handle"></div><div class="sheet-header"><h2 id="goal-history-title">Histórico</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
+            <div class="sheet-body"><ul class="task-list history-list" id="goal-history-list"></ul></div>
+        </div>
+
+        <!-- MODAL: NOVA MEMÓRIA -->
+        <div class="bottom-sheet" id="memory-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Guardar Memória</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="form-add-memory" class="sheet-body">
+                <div class="form-group">
+                    <label>Título do Momento</label>
+                    <input type="text" id="memory-title" class="form-control" placeholder="Ex: Viagem inesquecível pra serra" required>
+                </div>
+                <div class="form-group">
+                    <label>Data</label>
+                    <input type="date" id="memory-date" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Foto do Momento</label>
+                    <button type="button" id="btn-upload-memory-photo" class="btn-primary btn-secondary">
+                        <i class="ph ph-camera"></i> Escolher Foto
+                    </button>
+                    <input type="file" id="file-memory-photo" accept="image/*" class="d-none">
+                    <div id="memory-photo-preview" class="memory-photo-preview d-none"></div>
+                </div>
+                <div class="form-group">
+                    <label>Nota / História (Opcional)</label>
+                    <input type="text" id="memory-note" class="form-control" placeholder="Detalhes de como foi esse dia...">
+                </div>
+                <button type="submit" class="btn-primary">Salvar Memória</button>
+            </form>
+        </div>
+
+        <!-- MODAL: NOVO RECADO / POST-IT -->
+        <div class="bottom-sheet" id="note-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Deixar um Recado</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="form-add-note" class="sheet-body">
+                <div class="form-group">
+                    <label>Seu recadinho</label>
+                    <textarea id="note-text" class="form-control textarea-note" rows="3" placeholder="Ex: Bom dia amor, deixei o café pronto! Amo você." required></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Cor do Post-it</label>
+                    <select id="note-color" class="form-control">
+                        <option value="yellow">💛 Amarelinho Clássico</option>
+                        <option value="pink">🌸 Rosa Pastel</option>
+                        <option value="blue">🌊 Azul Suave</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Quanto tempo deve ficar visível?</label>
+                    <select id="note-duration" class="form-control">
+                        <option value="24">24 horas</option>
+                        <option value="72">3 dias</option>
+                        <option value="168" selected>7 dias</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary">Fixar no Mural</button>
+            </form>
+        </div>
+
+        <!-- MODAL: CRIAR LISTA / MÓDULO DE DECISÃO -->
+        <div class="bottom-sheet" id="create-list-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Nova Lista / Módulo</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="form-create-list" class="sheet-body">
+                <div class="form-group">
+                    <label>Nome da Lista</label>
+                    <input type="text" id="create-list-name" class="form-control" placeholder="Ex: Livros para Ler, Receitas" required>
+                </div>
+                <div class="form-group">
+                    <label>Tipo de Funcionalidade</label>
+                    <select id="create-list-type" class="form-control">
+                        <option value="standard">Lista Comum (Afazeres / Compras)</option>
+                        <option value="decision">🎲 Módulo de Decisão Rápida (Com Sorteador)</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary">Criar Lista</button>
+            </form>
+        </div>
+
+        <!-- MODAL: RESULTADO DA ROLETA / SORTEIO -->
+        <div class="bottom-sheet" id="roulette-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2 id="roulette-modal-title">Decisão Rápida</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="sheet-body text-center padded-xl">
+                <span class="roulette-result-label">O Nook escolheu para vocês:</span>
+                <div id="roulette-result-display" class="roulette-result-box">...</div>
+                <button id="btn-accept-decision" class="btn-primary btn-accept-decision d-none">
+                    <i class="ph-bold ph-check-circle mr-4"></i> Vamos nessa! (Marcar Concluído)
+                </button>
+            </div>
+        </div>
+
+        <!-- Modal: Ver Todas as Listas -->
+        <div class="bottom-sheet" id="all-lists-bottom-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-header">
+        <h2>Todas as Listas</h2>
+        <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+    </div>
+    <div class="sheet-body">
+        <div class="form-group">
+            <input type="text" id="search-all-lists" class="form-control" placeholder="🔍 Buscar lista pelo nome...">
+        </div>
+        <div id="all-lists-grid" class="all-lists-grid"></div>
+    </div>
+</div>
+    </main>
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>
