@@ -900,3 +900,9 @@ html[data-theme="dark"] .note-card.blue { background-color: #082F49; color: #E0F
     transform: scale(0.85);
     background: rgba(255,255,255,0.9);
 }
+/* Estados de operação e foco, mantendo o design original. */
+[aria-busy="true"] { cursor: progress; }
+button:disabled { opacity: .6; cursor: progress; }
+:focus-visible { outline: 2px solid var(--primary-hover); outline-offset: 3px; }
+#btn-retry-load { margin-bottom: 12px; }
+#fin-data-warning { margin: 12px 0; font-size: .85rem; }

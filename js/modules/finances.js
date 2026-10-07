@@ -1,7 +1,8 @@
 import { store } from '../store.js'; 
-import { triggerHaptic, formatCurrency, escapeHTML, getAvatarHtml, openModal, closeAllModals } from '../utils.js'; 
+import { triggerHaptic, formatCurrency, escapeHTML, getAvatarHtml, openModal, closeAllModals, runAction } from '../utils.js'; 
 
-let selectedHistoryMonth = new Date().toISOString().slice(0, 7); 
+import { localDate, sameId, financeShare, financialSummary, validateExpense, validDate } from '../rules.js';
+let selectedHistoryMonth = localDate().slice(0, 7); 
 
 const CAT_INFO = {
     'moradia': { color: '#E07A5F', label: 'Moradia' },
@@ -12,22 +13,22 @@ const CAT_INFO = {
 };
 
 const updateFinancesSummary = () => {
-    let totalPending = 0, totalOverall = 0, paidByIS = 0, paidByVO = 0;
-    const categoryTotals = { moradia: 0, mercado: 0, lazer: 0, transporte: 0, outros: 0 };
-    
-    (store.expenses || []).forEach(exp => {
-        if (!exp.completed) {
-            totalPending += exp.amount;
-            totalOverall += exp.amount;
-            categoryTotals[exp.category || 'outros'] += exp.amount;
-        } else if (exp.date.startsWith(selectedHistoryMonth)) {
-            totalOverall += exp.amount;
-            categoryTotals[exp.category || 'outros'] += exp.amount;
-            if(exp.owner === 'IS') paidByIS += exp.amount;
-            else if(exp.owner === 'VO') paidByVO += exp.amount;
-            else if(exp.owner === 'Casal') { paidByIS += exp.amount/2; paidByVO += exp.amount/2; }
-        }
-    });
+    let summary;
+    try { summary = financialSummary(store.expenses, store.finances, selectedHistoryMonth); }
+    catch (error) {
+        const card = document.getElementById('fin-settlement-card');
+        card?.classList.remove('d-none');
+        const total = document.getElementById('val-fin-m1'); if (total) total.textContent = 'Revisar dados';
+        document.getElementById('fin-chart-card')?.classList.add('d-none');
+        const text = document.getElementById('fin-settlement-text');
+        if (text) text.textContent = `${error.message} Revise a regra de divisão.`;
+        return;
+    }
+    const totalPending = summary.pending / 100, totalOverall = summary.total / 100;
+    const paidByIS = summary.paidP1 / 100, paidByVO = summary.paidP2 / 100;
+    const categoryTotals = Object.fromEntries(Object.entries(summary.categories).map(([key, value]) => [key, value / 100]));
+    const warning = document.getElementById('fin-data-warning');
+    if (warning) { warning.textContent = summary.invalid.length ? `${summary.invalid.length} conta(s) com dados inválidos não entram nos cálculos. Edite-as para corrigir.` : ''; warning.classList.toggle('d-none', !summary.invalid.length); }
 
     // Atualiza o valor Total
     const valM1 = document.getElementById('val-fin-m1');
@@ -66,19 +67,11 @@ const updateFinancesSummary = () => {
         } else {
             settleCard.classList.remove('d-none');
             
-            let pctIS = 50;
-            if (model === 'proportional') {
-                const totalIncome = (store.finances.incomeIS || 0) + (store.finances.incomeVO || 0);
-                pctIS = totalIncome > 0 ? Math.round((store.finances.incomeIS / totalIncome) * 100) : 50;
-            }
-            
-            const totalPaid = paidByIS + paidByVO;
-            const targetIS = totalPaid * (pctIS / 100);
-            const balanceIS = paidByIS - targetIS;
+            const balanceIS = summary.balance / 100;
             const p1Name = store.profile?.p1 || 'P1';
             const p2Name = store.profile?.p2 || 'P2';
 
-            if (Math.abs(balanceIS) < 1) {
+            if (summary.balance === 0) {
                 settleText.textContent = "Tudo certo! Ninguém deve ninguém."; 
                 settleText.className = 'dash-value settlement-value';
             } else {
@@ -86,8 +79,8 @@ const updateFinancesSummary = () => {
                 const debtor = owesIS ? p1Name : p2Name;
                 const creditor = owesIS ? p2Name : p1Name;
                 const amount = Math.abs(balanceIS);
-                if (store.finances.settleMode === 'transfer') settleText.innerHTML = `<span class="text-danger">${debtor} transfere ${formatCurrency(amount)}</span> para ${creditor}`;
-                else settleText.innerHTML = `<span class="text-primary">${debtor} assume os próximos</span> (Saldo de ${formatCurrency(amount)} a quitar)`;
+                if (store.finances.settleMode === 'transfer') settleText.innerHTML = `<span class="text-danger">${escapeHTML(debtor)} transfere ${formatCurrency(amount)}</span> para ${escapeHTML(creditor)}`;
+                else settleText.innerHTML = `<span class="text-primary">${escapeHTML(debtor)} assume os próximos</span> (Saldo de ${formatCurrency(amount)} a quitar)`;
             }
         }
     }
@@ -123,13 +116,14 @@ export const renderFinances = () => {
             title.textContent = "Regra: Divisão 50/50";
             if (propBar) propBar.classList.add('d-none');
         } else if (store.finances.model === 'proportional') {
-            const totalIncome = (store.finances.incomeIS || 0) + (store.finances.incomeVO || 0);
-            const pctIS = totalIncome > 0 ? Math.round((store.finances.incomeIS / totalIncome) * 100) : 50;
+            let share;
+            try { share = financeShare(store.finances); } catch { share = null; }
+            const pctIS = share === null ? 50 : Math.round(share * 100);
             const pctVO = 100 - pctIS;
-            valM2.textContent = `${pctIS}% / ${pctVO}%`; 
-            title.textContent = `Regra: Proporcional`;
+            valM2.textContent = share === null ? 'Revisar rendas' : `${pctIS}% / ${pctVO}%`; 
+            title.textContent = share === null ? 'Regra proporcional: revisar rendas' : 'Regra: Proporcional';
             if (propBar) {
-                propBar.classList.remove('d-none');
+                propBar.classList.toggle('d-none', share === null);
                 document.getElementById('prop-val-is').textContent = `${pctIS}%`;
                 document.getElementById('prop-val-vo').textContent = `${pctVO}%`;
                 document.getElementById('prop-fill-is').style.width = `${pctIS}%`;
@@ -154,13 +148,13 @@ export const renderFinances = () => {
     if (expensesContainer) expensesContainer.innerHTML = ''; 
     if (historyContainer) historyContainer.innerHTML = '';
     
-    const sortedExpenses = [...(store.expenses || [])].sort((a, b) => a.date.localeCompare(b.date));
+    const sortedExpenses = [...(store.expenses || [])].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
     const pendingList = sortedExpenses.filter(e => !e.completed);
-    const paidList = sortedExpenses.filter(e => e.completed && e.date.startsWith(selectedHistoryMonth));
+    const paidList = sortedExpenses.filter(e => e.completed && (!validDate(e.date) || e.date.startsWith(selectedHistoryMonth)));
     
     const createExpenseElement = (exp) => {
         const catInfo = CAT_INFO[exp.category] || CAT_INFO['outros'];
-        const [ey, em, ed] = exp.date.split('-');
+        const [, em, ed] = validDate(exp.date) ? exp.date.split('-') : ['', '?', '?'];
         const li = document.createElement('li');
         li.className = `task-item expense-item ${exp.completed ? 'completed' : ''}`;
         li.innerHTML = `
@@ -170,7 +164,7 @@ export const renderFinances = () => {
             </div>
             <div class="task-text flex-1">
                 <strong class="task-item-title">${escapeHTML(exp.title)}</strong>
-                <div class="task-item-subtitle">Vence dia ${ed}/${em}</div>
+                <div class="task-item-subtitle">Vence dia ${escapeHTML(ed)}/${escapeHTML(em)}</div>
             </div>
             ${getAvatarHtml(exp.owner, '24px')}
             <div class="expense-actions">
@@ -180,44 +174,22 @@ export const renderFinances = () => {
             </div>
         `;
         
-        // MANIPULAÇÃO DIRETA: Checkbox move o item fisicamente e recalcula os totais
-        li.querySelector('.checkbox').addEventListener('click', () => { 
-            triggerHaptic(15); 
-            exp.completed = !exp.completed; 
-            
-            if (exp.completed) {
-                li.classList.add('completed');
-                if (exp.date.startsWith(selectedHistoryMonth)) {
-                    document.getElementById('expenses-history-list')?.appendChild(li);
-                } else {
-                    li.remove(); // Fica oculto se não for do mês histórico
-                }
-            } else {
-                li.classList.remove('completed');
-                document.getElementById('expenses-list-container')?.appendChild(li);
-            }
-            
-            store.setExpenses([...store.expenses]); 
-            updateFinancesSummary();
-            
-            // Renderiza vazio apenas quando necessário
-            if (document.getElementById('expenses-list-container')?.children.length === 0) renderFinances();
-            if (document.getElementById('expenses-history-list')?.children.length === 0) renderFinances();
+        li.querySelector('.checkbox').addEventListener('click', async () => {
+            await runAction(li, async () => {
+                await store.saveRecord('expenses', { ...exp, completed: !exp.completed });
+                triggerHaptic(15); renderFinances();
+            });
         });
-        
-        li.querySelector('.btn-delete-expense').addEventListener('click', () => { 
-            triggerHaptic(20); 
-            store.setExpenses(store.expenses.filter(e => e.id !== exp.id)); 
-            li.remove();
-            updateFinancesSummary();
-            if (document.getElementById('expenses-list-container')?.children.length === 0 || document.getElementById('expenses-history-list')?.children.length === 0) renderFinances();
+        li.querySelector('.btn-delete-expense').addEventListener('click', async () => {
+            if (!confirm('Excluir esta conta?')) return;
+            await runAction(li, async () => { await store.deleteRecord('expenses', exp.id); triggerHaptic(20); renderFinances(); });
         });
-        
+
         li.querySelector('.btn-edit-expense').addEventListener('click', () => {
             document.getElementById('expense-id').value = exp.id;
             document.getElementById('expense-title').value = exp.title;
             document.getElementById('expense-amount').value = exp.amount;
-            document.getElementById('expense-date').value = exp.date;
+            document.getElementById('expense-date').value = validDate(exp.date) ? exp.date : '';
             document.getElementById('expense-category').value = exp.category;
             document.getElementById('expense-owner').value = exp.owner;
             document.getElementById('expense-modal-title').textContent = "Editar Conta";
@@ -241,68 +213,50 @@ export const renderFinances = () => {
 };
 
 export const initFinances = () => {
-    document.getElementById('btn-open-fin-setup')?.addEventListener('click', () => openModal('fin-setup-bottom-sheet'));
-    document.getElementById('fin-setup-banner')?.addEventListener('click', () => openModal('fin-setup-bottom-sheet'));
-    
-    document.getElementById('fin-model-select')?.addEventListener('change', (e) => {
-        const incomeInputs = document.getElementById('fin-income-inputs');
-        const settleMode = document.getElementById('fin-settle-mode-group');
-        
-        if (e.target.value === 'proportional') incomeInputs?.classList.remove('d-none');
-        else incomeInputs?.classList.add('d-none');
-        
-        if (e.target.value === '50/50' || e.target.value === 'proportional') settleMode?.classList.remove('d-none');
-        else settleMode?.classList.add('d-none');
-    });
-    
-    document.getElementById('form-fin-setup')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        store.setFinances({
-            model: document.getElementById('fin-model-select').value,
-            incomeIS: parseFloat(document.getElementById('fin-income-is').value) || 0,
-            incomeVO: parseFloat(document.getElementById('fin-income-vo').value) || 0,
-            focus: 'acerto',
-            settleMode: document.getElementById('fin-settle-mode-select').value,
-            configured: true
+    const month = document.getElementById('fin-history-month'); if (month) month.value = selectedHistoryMonth;
+    const updateSetupVisibility = () => {
+        const model = document.getElementById('fin-model-select').value;
+        document.getElementById('fin-income-inputs')?.classList.toggle('d-none', model !== 'proportional');
+        document.getElementById('fin-settle-mode-group')?.classList.toggle('d-none', !['50/50', 'proportional'].includes(model));
+    };
+    const openSetup = () => {
+        document.getElementById('fin-model-select').value = store.finances.model || '50/50';
+        document.getElementById('fin-income-is').value = store.finances.incomeIS ?? 0;
+        document.getElementById('fin-income-vo').value = store.finances.incomeVO ?? 0;
+        document.getElementById('fin-settle-mode-select').value = store.finances.settleMode || 'transfer';
+        updateSetupVisibility(); openModal('fin-setup-bottom-sheet');
+    };
+    document.getElementById('btn-open-fin-setup')?.addEventListener('click', openSetup);
+    document.getElementById('fin-setup-banner')?.addEventListener('click', openSetup);
+    document.getElementById('fin-model-select')?.addEventListener('change', updateSetupVisibility);
+    document.getElementById('form-fin-setup')?.addEventListener('submit', async e => {
+        e.preventDefault(); const form = e.currentTarget;
+        await runAction(form, async () => {
+            await store.setFinances({ model: document.getElementById('fin-model-select').value, incomeIS: document.getElementById('fin-income-is').value, incomeVO: document.getElementById('fin-income-vo').value, settleMode: document.getElementById('fin-settle-mode-select').value, configured: true });
+            triggerHaptic(30); renderFinances(); closeAllModals(true);
         });
-        triggerHaptic(30); renderFinances(); closeAllModals(true);
     });
-    
+
     document.getElementById('btn-big-add-expense')?.addEventListener('click', () => {
         document.getElementById('form-add-expense').reset();
         document.getElementById('expense-id').value = '';
-        document.getElementById('expense-modal-title').textContent = "Nova Conta";
+        document.getElementById('expense-modal-title').textContent = 'Nova Conta';
         openModal('expense-bottom-sheet');
     });
-    
-    document.getElementById('form-add-expense')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const expenseId = document.getElementById('expense-id').value;
-        const amount = parseFloat(document.getElementById('expense-amount').value);
-        if (isNaN(amount) || amount <= 0) return;
-        
-        const expenseData = {
-            title: document.getElementById('expense-title').value,
-            category: document.getElementById('expense-category').value,
-            amount: amount,
-            date: document.getElementById('expense-date').value,
-            owner: document.getElementById('expense-owner').value
-        };
-        if (expenseId) {
-            const exp = store.expenses.find(x => x.id === parseInt(expenseId));
-            if(exp) Object.assign(exp, expenseData);
-        } else {
-            expenseData.id = Date.now();
-            expenseData.completed = false;
-            store.expenses.push(expenseData);
-        }
-        store.setExpenses([...store.expenses]);
-        triggerHaptic(30); 
-        renderFinances(); 
-        closeAllModals(true);
-        e.target.reset();
+
+    document.getElementById('form-add-expense')?.addEventListener('submit', async e => {
+        e.preventDefault(); const form = e.currentTarget;
+        await runAction(form, async () => {
+            const id = document.getElementById('expense-id').value;
+            const existing = id ? store.expenses.find(exp => sameId(exp.id, id)) : null;
+            if (id && !existing) throw new Error('Esta conta mudou. Recarregue antes de editar.');
+            const data = validateExpense({ ...(existing || { completed: false }), title: document.getElementById('expense-title').value, amount: document.getElementById('expense-amount').value, category: document.getElementById('expense-category').value, date: document.getElementById('expense-date').value, owner: document.getElementById('expense-owner').value });
+            const saved = await store.saveRecord('expenses', data, { create: !id });
+            document.getElementById('expense-id').value = saved.id;
+            triggerHaptic(30); renderFinances(); closeAllModals(true); form.reset();
+        });
     });
-    
+
     document.getElementById('fin-history-month')?.addEventListener('change', (e) => { 
         selectedHistoryMonth = e.target.value; 
         renderFinances(); 

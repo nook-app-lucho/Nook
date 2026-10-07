@@ -1,5 +1,7 @@
 import { store } from '../store.js';
-import { triggerHaptic, getLocalDateString, getInitials, escapeHTML, openModal, closeAllModals, enableDesktopScroll } from '../utils.js';
+import { triggerHaptic, getLocalDateString, getInitials, escapeHTML, openModal, closeAllModals, enableDesktopScroll, runAction } from '../utils.js';
+
+import { validDate } from '../rules.js';
 
 let selectedDateStr = getLocalDateString(new Date());
 let currentAgendaView = 'week';
@@ -106,7 +108,7 @@ export const renderAgendaView = () => {
         
         const safeTitle = escapeHTML(ev.title);
         const safeSubtitle = ev.subtitle ? escapeHTML(ev.subtitle) : '';
-        const [ey, em, ed] = ev.date.split('-');
+        const [, em, ed] = validDate(ev.date) ? ev.date.split('-') : ['', '?', '?'];
         const dateTag = showBadge ? `<span class="agenda-date-badge">${ed}/${em}</span>` : '';
         
         // Lógica de RSVP para o Casal
@@ -125,39 +127,32 @@ export const renderAgendaView = () => {
         li.innerHTML = `
             <div class="task-text flex-col" style="flex: 1;">
                 <strong class="task-item-title">${safeTitle}</strong>
-                <div class="task-item-subtitle">${dateTag} ${ev.time} ${safeSubtitle ? '- ' + safeSubtitle : ''}</div>
+                <div class="task-item-subtitle">${dateTag} ${escapeHTML(ev.time)} ${safeSubtitle ? '- ' + safeSubtitle : ''}</div>
                 ${rsvpSection}
             </div>
-            <div class="task-badge ${badgeClass}">${displayOwner}</div>
+            <div class="task-badge ${badgeClass}">${escapeHTML(displayOwner)}</div>
             <button class="btn-delete-event"><i class="ph ph-trash"></i></button>
         `;
         
         // Listener para confirmar ciente (RSVP)
         const rsvpBtn = li.querySelector('.btn-rsvp');
         if (rsvpBtn) {
-            rsvpBtn.addEventListener('click', () => {
-                triggerHaptic(15);
-                ev.confirmed = true;
-                store.setAgenda([...store.agenda]);
-                renderAgendaView();
-            });
+            rsvpBtn.addEventListener('click', async () => { await runAction(li, async () => { await store.saveRecord('agenda', { ...ev, confirmed: true }); triggerHaptic(15); renderAgendaView(); }); });
         }
 
-        li.querySelector('.btn-delete-event').addEventListener('click', () => {
-            triggerHaptic(20);
-            store.setAgenda(store.agenda.filter(e => e.id !== ev.id));
-            renderDateScroller(); 
-            renderAgendaView();
+        li.querySelector('.btn-delete-event').addEventListener('click', async () => {
+            if (!confirm('Excluir este compromisso?')) return;
+            await runAction(li, async () => { await store.deleteRecord('agenda', ev.id); renderDateScroller(); renderAgendaView(); });
         });
-        
+
         return li;
     };
 
-    const selectedEvents = store.agenda.filter(ev => ev.date === selectedDateStr).sort((a, b) => a.time.localeCompare(b.time));
+    const selectedEvents = store.agenda.filter(ev => ev.date === selectedDateStr).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
     if (selectedEvents.length === 0) selectedListEl.innerHTML = `<li class="empty-state">Dia livre!</li>`;
     else selectedEvents.forEach(ev => selectedListEl.appendChild(createEl(ev, false)));
 
-    const futureEvents = store.agenda.filter(ev => ev.date >= todayStr).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+    const futureEvents = store.agenda.filter(ev => ev.date >= todayStr).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')));
     if (futureEvents.length === 0) allListEl.innerHTML = `<li class="empty-state">Nenhum compromisso agendado para o futuro.</li>`;
     else futureEvents.forEach(ev => allListEl.appendChild(createEl(ev, true)));
 };
@@ -204,33 +199,18 @@ export const initAgenda = () => {
 
     const form = document.getElementById('form-add-event');
     document.getElementById('btn-open-event-modal')?.addEventListener('click', () => {
-        openModal('event-bottom-sheet');
         document.getElementById('event-date').value = selectedDateStr;
+        openModal('event-bottom-sheet');
     });
 
-    form?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        
-        const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
-        
-        store.setAgenda([...store.agenda, {
-            id: Date.now(),
-            title: document.getElementById('event-title').value,
-            date: document.getElementById('event-date').value,
-            time: document.getElementById('event-time').value,
-            owner: document.getElementById('event-owner').value,
-            subtitle: document.getElementById('event-subtitle').value,
-            createdBy: myPersonId, // Registra quem criou
-            confirmed: false       // Evento nasce como não confirmado
-        }]);
-        
-        renderDateScroller();
-        renderAgendaView();
-        triggerHaptic(30);
-        closeAllModals(true);
-        form?.reset();
+    form?.addEventListener('submit', async e => {
+        e.preventDefault(); const target = e.currentTarget;
+        await runAction(target, async () => {
+            await store.saveRecord('agenda', { title: document.getElementById('event-title').value, date: document.getElementById('event-date').value, time: document.getElementById('event-time').value, owner: document.getElementById('event-owner').value, subtitle: document.getElementById('event-subtitle').value, createdBy: store.getLoggedUser(), confirmed: false }, { create: true });
+            renderDateScroller(); renderAgendaView(); triggerHaptic(30); closeAllModals(true); target.reset();
+        });
     });
-    
+
     renderDateScroller();
     renderAgendaView();
 };

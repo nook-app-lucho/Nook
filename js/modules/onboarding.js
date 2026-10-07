@@ -1,11 +1,12 @@
 import { store, supabase } from '../store.js'; 
-import { triggerHaptic, getInitials } from '../utils.js'; 
+import { triggerHaptic, getInitials, runAction, validateImageFile, imageBackground } from '../utils.js'; 
 import { renderFinances } from './finances.js'; 
 import { renderHome } from './home.js'; 
 
 let tempAvatarP1 = null; 
 let tempAvatarP2 = null; 
-let currentTargetPerson = null; 
+let currentTargetPerson = null;
+let uploadsPending = 0; 
 
 const EMOJI_LIST = [
     // 🐶 Animais e Bichinhos
@@ -32,7 +33,7 @@ export const renderAvatar = (elements, name, avatarData) => {
         // Verifica se é uma URL válida ou Base64 (foto)
         if (avatarData && (avatarData.startsWith('data:image') || avatarData.startsWith('http'))) {
             el.textContent = '';
-            el.style.backgroundImage = `url(${avatarData})`;
+            el.style.backgroundImage = imageBackground(avatarData);
             el.classList.add('has-photo');
         } else if (avatarData) {
             el.textContent = avatarData;
@@ -75,9 +76,10 @@ export const updateProfileUI = () => {
 // Modificado para usar o Supabase Storage em vez de Base64
 const processImageFile = async (file, callback) => {
     if (!file) return;
+    validateImageFile(file);
 
     // Gerar um nome de arquivo único
-    const fileExt = file.name.split('.').pop();
+    const fileExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[file.type];
     const fileName = `avatars/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
 
     try {
@@ -95,10 +97,7 @@ const processImageFile = async (file, callback) => {
 
         // Retorna a URL para ser salva no banco
         callback(publicUrlData.publicUrl);
-    } catch (err) {
-        console.error('Erro ao fazer upload do avatar:', err);
-        alert('Falha ao enviar a foto. Tente novamente.');
-    }
+    } catch (err) { throw err; }
 };
 
 const initEmojiPicker = () => {
@@ -156,17 +155,15 @@ const setupAvatarPicker = (personId) => {
     btnEmoji?.addEventListener('click', () => openEmojiPicker(personId));
     
     // Atualizado para receber URL em vez de Base64
-    fileInput?.addEventListener('change', (e) => {
+    fileInput?.addEventListener('change', async e => {
         const file = e.target.files[0];
         if (!file) return;
-        
-        // Coloca um placeholder de loading ou texto enquanto sobe a imagem (opcional)
-        preview.textContent = "⌛";
-        
-        processImageFile(file, (url) => {
-            if(personId === 'p1') tempAvatarP1 = url; else tempAvatarP2 = url;
-            renderAvatar([preview], inputName?.value || '', url);
-            triggerHaptic(20);
+        await runAction(fileInput, async () => {
+            uploadsPending++;
+            try { await processImageFile(file, url => {
+                if (personId === 'p1') tempAvatarP1 = url; else tempAvatarP2 = url;
+                renderAvatar([preview], inputName?.value || '', url); triggerHaptic(20);
+            }); } finally { uploadsPending--; }
         });
     });
 };
@@ -179,6 +176,7 @@ export const initOnboarding = () => {
     const btnReopen = document.getElementById('btn-reopen-onboarding');
     const views = document.querySelectorAll('.view');
     
+    tempAvatarP1 = store.profile?.avatarP1 || null; tempAvatarP2 = store.profile?.avatarP2 || null;
     const isProfileValid = store.profile?.p1 && store.profile?.p2 && store.profile?.startDate;
     initEmojiPicker(); 
     setupAvatarPicker('p1'); 
@@ -194,39 +192,23 @@ export const initOnboarding = () => {
         dateInput.setAttribute('max', `${yyyy}-${mm}-${dd}`);
     }
 
-    if (store.currentCoupleId) {
-        views.forEach(v => v.classList.remove('active'));
-        if (!isProfileValid) {
-            if (onboardingView) onboardingView.classList.add('active');
-            if (bottomBar) bottomBar.classList.add('hidden');
-        } else {
-            if (homeView) homeView.classList.add('active');
-            if (bottomBar) bottomBar.classList.remove('hidden');
-            updateProfileUI(); 
-            renderHome();
-        }
-    }
-    
+    if (isProfileValid) updateProfileUI();
+
     if (formOnboarding) {
-        formOnboarding.addEventListener('submit', (e) => {
-            e.preventDefault();
-            const p1 = document.getElementById('onboarding-p1').value.trim();
-            const p2 = document.getElementById('onboarding-p2').value.trim();
-            const startDate = document.getElementById('onboarding-date').value;
-            if (!p1 || !p2 || !startDate) return;
-            store.setProfile({ p1, p2, startDate, avatarP1: tempAvatarP1, avatarP2: tempAvatarP2 });
-            triggerHaptic(30);
-            views.forEach(v => v.classList.remove('active'));
-            if (homeView) homeView.classList.add('active');
-            if (bottomBar) bottomBar.classList.remove('hidden');
-            updateProfileUI(); 
-            renderFinances(); 
-            renderHome();
+        formOnboarding.addEventListener('submit', async e => {
+            e.preventDefault(); const form = e.currentTarget;
+            await runAction(form, async () => {
+                if (uploadsPending) throw new Error('Aguarde o envio das fotos terminar.');
+                await store.setProfile({ p1: document.getElementById('onboarding-p1').value.trim(), p2: document.getElementById('onboarding-p2').value.trim(), startDate: document.getElementById('onboarding-date').value, avatarP1: tempAvatarP1, avatarP2: tempAvatarP2 });
+                triggerHaptic(30); updateProfileUI(); renderFinances(); renderHome();
+                window.dispatchEvent(new CustomEvent('nook:profile-saved'));
+            });
         });
     }
-    
+
     if (btnReopen) {
         btnReopen.addEventListener('click', () => {
+            if (store.profile?.approved !== true) return;
             triggerHaptic(10);
             if (store.profile) {
                 document.getElementById('onboarding-p1').value = store.profile.p1;

@@ -1,4 +1,5 @@
 import { store } from './store.js';
+import { localDate } from './rules.js';
 
 export const triggerHaptic = (ms = 15) => {
     if (window.navigator && window.navigator.vibrate) { window.navigator.vibrate(ms); }
@@ -11,42 +12,54 @@ export const getInitials = (name) => {
     return name.trim().slice(0, 2).toUpperCase();
 };
 
-export const formatCurrency = (val) => {
-    return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+export const formatCurrency = value => {
+    if (value == null || !Number.isFinite(Number(value))) return 'Valor inválido';
+    return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
-
-export const getLocalDateString = (d) => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+export const getLocalDateString = localDate;
+export const escapeHTML = value => String(value ?? '').replace(/[&<>'"]/g, tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag]));
+export const safeImageUrl = value => {
+    if (typeof value !== 'string') return '';
+    if (/^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(value)) return value;
+    try { const url = new URL(value); return ['https:', 'http:'].includes(url.protocol) ? url.href : ''; } catch { return ''; }
 };
-
-export const escapeHTML = (str) => {
-    if (typeof str !== 'string') return str;
-    return str.replace(/[&<>'"]/g, tag => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
-    }[tag]));
+export const imageBackground = value => {
+    const safe = safeImageUrl(value);
+    return safe ? `url(${JSON.stringify(safe)})` : 'none';
 };
-
 export const getAvatarHtml = (ownerId, size = '28px') => {
+    const safeSize = /^\d+(px|rem)$/.test(size) ? size : '28px';
+    if (ownerId === 'Casal') return `<div class="task-badge bg-casal" style="width:${safeSize};height:${safeSize};margin-left:0">NÓS</div>`;
     const profile = store.profile || {};
-    if (ownerId === 'Casal') {
-        return `<div class="task-badge bg-casal" style="width: ${size}; height: ${size}; margin-left: 0;">NÓS</div>`;
-    }
-    const isP1 = ownerId === 'IS' || ownerId === 'p1' || ownerId === profile.p1;
-    const name = isP1 ? (profile.p1 || 'P1') : (profile.p2 || 'P2');
-    const avatarData = isP1 ? profile.avatarP1 : profile.avatarP2;
-    const initials = getInitials(name);
-    const baseClass = isP1 ? 'my-avatar' : 'partner-avatar';
+    const isP1 = ['IS', 'p1', profile.p1].includes(ownerId);
+    const name = isP1 ? profile.p1 || 'P1' : profile.p2 || 'P2';
+    const avatar = isP1 ? profile.avatarP1 : profile.avatarP2;
+    const photo = safeImageUrl(avatar);
+    const cls = isP1 ? 'my-avatar' : 'partner-avatar';
+    return photo
+        ? `<div class="task-badge has-photo ${cls}" style="width:${safeSize};height:${safeSize};margin-left:0;background-image:${escapeHTML(imageBackground(photo))}"></div>`
+        : `<div class="task-badge ${cls}" style="width:${safeSize};height:${safeSize};margin-left:0">${escapeHTML(avatar || getInitials(name))}</div>`;
+};
 
-    if (avatarData && avatarData.startsWith('data:image')) {
-        return `<div class="task-badge has-photo ${baseClass}" style="width: ${size}; height: ${size}; background-image: url('${avatarData}'); margin-left: 0;"></div>`;
-    } else if (avatarData) {
-        return `<div class="task-badge ${baseClass}" style="width: ${size}; height: ${size}; font-size: 0.95rem; line-height: 1; margin-left: 0; display: flex; align-items: center; justify-content: center;">${avatarData}</div>`;
-    } else {
-        return `<div class="task-badge ${baseClass}" style="width: ${size}; height: ${size}; margin-left: 0;">${initials}</div>`;
+const busy = new WeakSet();
+export const runAction = async (element, work) => {
+    if (element && busy.has(element)) return false;
+    if (element) { busy.add(element); element.dataset.saving = 'true'; element.setAttribute('aria-busy', 'true'); }
+    const buttons = element?.querySelectorAll('button[type="submit"]') || [];
+    const previous = [...buttons].map(button => button.disabled);
+    buttons.forEach(button => button.disabled = true);
+    if (element?.tagName === 'BUTTON') element.disabled = true;
+    try { await work(); return true; }
+    catch (error) { showToast(error?.message || 'Não foi possível concluir. Seus dados não foram confirmados. Tente novamente.', 'ph-warning-circle'); return false; }
+    finally {
+        buttons.forEach((button, index) => button.disabled = previous[index]);
+        if (element) { busy.delete(element); delete element.dataset.saving; element.setAttribute('aria-busy', 'false'); if (element.tagName === 'BUTTON') element.disabled = false; }
     }
+};
+export const validateImageFile = file => {
+    if (!file || !['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(file.type)) throw new Error('Escolha uma imagem JPG, PNG, WebP ou GIF.');
+    if (file.size > 8 * 1024 * 1024) throw new Error('A foto deve ter no máximo 8 MB.');
+    return file;
 };
 
 export const hasUnsavedChanges = () => {
@@ -78,6 +91,7 @@ export const openModal = (modalId) => {
 };
 
 export const closeAllModals = (force = false) => {
+    if (force !== true && document.querySelector('[data-saving="true"]')) { showToast('Aguarde a gravação terminar.'); return; }
     if (force !== true && hasUnsavedChanges()) {
         const confirmar = window.confirm("Você tem alterações não salvas. Deseja descartar os dados?");
         if (!confirmar) return;
@@ -118,7 +132,8 @@ export const showToast = (message, icon = 'ph-check-circle') => {
         document.body.appendChild(toast);
     }
     toast.className = 'toast-notification';
-    toast.innerHTML = `<i class="ph-fill ${icon} text-primary" style="font-size: 1.2rem;"></i> <span>${escapeHTML(message)}</span>`;
+    toast.setAttribute('role', 'status'); toast.setAttribute('aria-live', 'polite');
+    toast.innerHTML = `<i class="ph-fill ${escapeHTML(icon)} text-primary" style="font-size: 1.2rem;"></i> <span>${escapeHTML(message)}</span>`;
     
     // Força o "reflow" para a animação funcionar
     void toast.offsetWidth; 

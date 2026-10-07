@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nook - Gestão a Dois</title>
     <link rel="icon" type="image/svg+xml" href="img/icon.svg">
     <link rel="icon" type="image/png" sizes="192x192" href="img/icon-192.png">
@@ -14,6 +14,24 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Nook">
     
+    <script>
+    (function () {
+        var bootstrapFailed = false;
+        function showBootstrapError() {
+            var status = document.getElementById('app-status');
+            if (status) { status.textContent = 'Não foi possível carregar o Nook. Verifique a conexão e recarregue a página.'; status.classList.remove('d-none'); }
+            var retry = document.getElementById('btn-retry-load');
+            if (retry) retry.onclick = function () { window.location.reload(); };
+        }
+        window.addEventListener('error', function (event) {
+            var target = event.target;
+            if ((target && target.tagName === 'SCRIPT' && /supabase-js/.test(target.src || '')) || /\/js\/store\.js/.test(event.filename || '')) {
+                bootstrapFailed = true; showBootstrapError();
+            }
+        }, true);
+        document.addEventListener('DOMContentLoaded', function () { if (bootstrapFailed) showBootstrapError(); });
+    })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
     <link rel="stylesheet" href="style.css">
     <script src="https://unpkg.com/@phosphor-icons/web" defer></script>
@@ -33,7 +51,7 @@
     <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js" defer></script>
     <script>
     window.addEventListener('DOMContentLoaded', () => {
-        MobileDragDrop.polyfill({ holdToDrag: 250 });
+        if (window.MobileDragDrop) window.MobileDragDrop.polyfill({ holdToDrag: 250 });
         window.addEventListener('touchmove', function() {}, {passive: false});
     });
     </script>
@@ -41,6 +59,8 @@
 </head>
 <body>
     <main class="app-container">
+        <div id="app-status" role="status" class="empty-state">Carregando seu espaço…</div>
+        <button id="btn-retry-load" class="btn-primary btn-secondary" type="button">Tentar carregar novamente</button>
         <!-- TELA DE LOGIN / CADASTRO -->
         <div id="view-login" class="view">
             <section class="hero-dashboard hero-login">
@@ -81,6 +101,7 @@
                 <h3 class="card-title-lg">Acesso Pendente de Liberação</h3>
                 <p class="text-muted-sm">Sua conta foi criada com sucesso! Por motivos de segurança durante nossa fase de testes, o administrador precisa aprovar seu acesso.</p>
                 <span class="badge-status">Status: Aguardando Aprovação</span>
+                <button id="btn-check-approval" type="button" class="btn-primary">Verificar liberação</button>
                 <button id="btn-pending-logout" class="btn-primary btn-outline-danger">Sair da Conta</button>
             </div>
         </div>
@@ -135,7 +156,7 @@
                                 <button type="button" class="btn-avatar-opt" id="btn-foto-p1"><i class="ph ph-camera"></i> Foto</button>
                                 <button type="button" class="btn-avatar-opt" id="btn-emoji-p1"><i class="ph ph-smiley"></i> Emoji</button>
                             </div>
-                            <input type="file" id="file-p1" accept="image/*" class="d-none">
+                            <input type="file" id="file-p1" accept="image/jpeg,image/png,image/webp,image/gif" class="d-none">
                         </div>
                     </div>
                 </div>
@@ -150,7 +171,7 @@
                                 <button type="button" class="btn-avatar-opt" id="btn-foto-p2"><i class="ph ph-camera"></i> Foto</button>
                                 <button type="button" class="btn-avatar-opt" id="btn-emoji-p2"><i class="ph ph-smiley"></i> Emoji</button>
                             </div>
-                            <input type="file" id="file-p2" accept="image/*" class="d-none">
+                            <input type="file" id="file-p2" accept="image/jpeg,image/png,image/webp,image/gif" class="d-none">
                         </div>
                     </div>
                 </div>
@@ -299,7 +320,7 @@
 </div>
             
             <div class="list-actions">
-                <button class="action-btn" id="btn-list-archive"><i class="ph ph-archive-box"></i> Arquivar Concluídas</button>
+                <button class="action-btn" id="btn-list-archive"><i class="ph ph-archive-box"></i> Remover Concluídas</button>
             </div>
             
             <form id="form-add-task" class="add-item-bar">
@@ -357,7 +378,7 @@
             <div id="fin-settlement-card" class="dash-card fin-settlement d-none">
                 <div class="dash-icon bg-primary text-white"><i class="ph-fill ph-scales"></i></div>
                 <div class="dash-info">
-                    <span class="dash-title settlement-label">Acerto do Mês</span>
+                    <span class="dash-title settlement-label">Acerto por vencimento</span>
                     <span class="dash-value settlement-value" id="fin-settlement-text">Calculando...</span>
                 </div>
             </div>
@@ -387,6 +408,7 @@
                 <div class="progress-bar"><div id="prop-fill-is" class="progress-fill" style="width: 50%;"></div></div>
             </div>
             
+            <p id="fin-data-warning" role="alert" class="text-danger d-none"></p>
             <button id="btn-big-add-expense" class="btn-primary btn-big-add">
                 <i class="ph-bold ph-plus-circle icon-xl"></i> Adicionar Novo Gasto
             </button>
@@ -515,20 +537,20 @@
                 <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
             </div>
             <form id="form-add-event" class="sheet-body">
-                <div class="form-group"><label>Título</label><input type="text" id="event-title" class="form-control" required></div>
+                <div class="form-group"><label for="event-title">Título</label><input type="text" id="event-title" class="form-control" required></div>
                 <div class="form-row">
-                    <div class="form-group flex-1"><label>Data</label><input type="date" id="event-date" class="form-control" required></div>
-                    <div class="form-group flex-1"><label>Horário</label><input type="time" id="event-time" class="form-control" required></div>
+                    <div class="form-group flex-1"><label for="event-date">Data</label><input type="date" id="event-date" class="form-control" required></div>
+                    <div class="form-group flex-1"><label for="event-time">Horário</label><input type="time" id="event-time" class="form-control" required></div>
                 </div>
                 <div class="form-group">
-                    <label>De quem é?</label>
+                    <label for="event-owner">De quem é?</label>
                     <select id="event-owner" class="form-control">
                         <option value="Casal">Nós dois (Casal)</option>
                         <option value="IS">IS</option>
                         <option value="VO">VO</option>
                     </select>
                 </div>
-                <div class="form-group"><label>Local / Nota</label><input type="text" id="event-subtitle" class="form-control"></div>
+                <div class="form-group"><label for="event-subtitle">Local / Nota</label><input type="text" id="event-subtitle" class="form-control"></div>
                 <button type="submit" class="btn-primary">Salvar Compromisso</button>
             </form>
         </div>
@@ -543,11 +565,11 @@
             <form id="form-edit-task" class="sheet-body">
                 <input type="hidden" id="edit-task-id">
                 <div class="form-group">
-                    <label>O que precisa ser feito?</label>
+                    <label for="edit-task-text">O que precisa ser feito?</label>
                     <input type="text" id="edit-task-text" class="form-control" required>
                 </div>
                 <div class="form-group">
-                    <label>De quem é?</label>
+                    <label for="edit-task-owner">De quem é?</label>
                     <select id="edit-task-owner" class="form-control">
                         <option value="Casal">Nós dois (Casal)</option>
                         <option value="IS" id="opt-edit-task-p1">P1</option>
@@ -567,13 +589,13 @@
             </div>
             <form id="form-add-expense" class="sheet-body">
                 <input type="hidden" id="expense-id">
-                <div class="form-group"><label>Descrição da Conta</label><input type="text" id="expense-title" class="form-control" placeholder="Ex: Luz, Ifood" required></div>
+                <div class="form-group"><label for="expense-title">Descrição da Conta</label><input type="text" id="expense-title" class="form-control" placeholder="Ex: Luz, Ifood" required></div>
                 <div class="form-row">
-                    <div class="form-group flex-1"><label>Valor (R$)</label><input type="number" id="expense-amount" class="form-control" placeholder="150.00" min="0.01" step="0.01" required></div>
-                    <div class="form-group flex-1"><label>Vencimento</label><input type="date" id="expense-date" class="form-control" required></div>
+                    <div class="form-group flex-1"><label for="expense-amount">Valor (R$)</label><input type="number" id="expense-amount" class="form-control" placeholder="150.00" min="0.01" step="0.01" required></div>
+                    <div class="form-group flex-1"><label for="expense-date">Vencimento</label><input type="date" id="expense-date" class="form-control" required></div>
                 </div>
                 <div class="form-group">
-                    <label>Categoria</label>
+                    <label for="expense-category">Categoria</label>
                     <select id="expense-category" class="form-control">
                         <option value="moradia">🏠 Moradia (Aluguel, Luz)</option>
                         <option value="mercado">🛒 Mercado e Alimentação</option>
@@ -583,7 +605,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Quem é responsável?</label>
+                    <label for="expense-owner">Quem pagou ou pagará?</label>
                     <select id="expense-owner" class="form-control">
                         <option value="Casal">Nós dois (Casal)</option>
                         <option value="IS" id="opt-expense-owner-p1">P1</option>
@@ -603,7 +625,7 @@
             </div>
             <form id="form-fin-setup" class="sheet-body">
                 <div class="form-group">
-                    <label>Modelo de Divisão</label>
+                    <label for="fin-model-select">Modelo de Divisão</label>
                     <select id="fin-model-select" class="form-control" required>
                         <option value="50/50">Divisão 50/50 (Metade cada)</option>
                         <option value="proportional">Proporcional à renda</option>
@@ -615,12 +637,12 @@
                 </div>
                 <div id="fin-income-inputs" class="fin-income-wrapper d-none">
                     <div class="form-row">
-                        <div class="form-group flex-1 mb-0"><label id="label-fin-inc-p1">P1 (R$)</label><input type="number" id="fin-income-is" class="form-control"></div>
-                        <div class="form-group flex-1 mb-0"><label id="label-fin-inc-p2">P2 (R$)</label><input type="number" id="fin-income-vo" class="form-control"></div>
+                        <div class="form-group flex-1 mb-0"><label id="label-fin-inc-p1">P1 (R$)</label><input type="number" id="fin-income-is" class="form-control" min="0" step="0.01"></div>
+                        <div class="form-group flex-1 mb-0"><label id="label-fin-inc-p2">P2 (R$)</label><input type="number" id="fin-income-vo" class="form-control" min="0" step="0.01"></div>
                     </div>
                 </div>
                 <div class="form-group" id="fin-settle-mode-group">
-                    <label>Como fazer o acerto?</label>
+                    <label for="fin-settle-mode-select">Como fazer o acerto?</label>
                     <select id="fin-settle-mode-select" class="form-control">
                         <option value="prioritize">Priorizar próximos boletos</option>
                         <option value="transfer">Transferência Direta (Pix)</option>
@@ -641,7 +663,7 @@
                 <button id="btn-upload-hero" class="btn-primary btn-secondary mb-16">
                     <i class="ph ph-upload-simple"></i> Enviar Nossa Foto
                 </button>
-                <input type="file" id="file-hero-upload" accept="image/*" class="d-none">
+                <input type="file" id="file-hero-upload" accept="image/jpeg,image/png,image/webp,image/gif" class="d-none">
                 <span class="sheet-sublabel">OU ESCOLHA UMA OPÇÃO:</span>
                 <div id="hero-gallery-grid" class="hero-gallery-grid"></div>
             </div>
@@ -652,11 +674,11 @@
             <div class="sheet-handle"></div>
             <div class="sheet-header"><h2>Nova Meta</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
             <form id="form-add-goal" class="sheet-body">
-                <div class="form-group"><label>Tipo</label><select id="goal-type" class="form-control"><option value="financial">Financeira</option><option value="habit">Hábito</option></select></div>
-                <div class="form-group"><label>Título</label><input type="text" id="goal-title" class="form-control" required></div>
+                <div class="form-group"><label for="goal-type">Tipo</label><select id="goal-type" class="form-control"><option value="financial">Financeira</option><option value="habit">Hábito</option></select></div>
+                <div class="form-group"><label for="goal-title">Título</label><input type="text" id="goal-title" class="form-control" required></div>
 <div class="form-row">
     <div class="form-group flex-1">
-        <label>Ícone</label>
+        <label for="goal-icon">Ícone</label>
         <input type="hidden" id="goal-icon" value="🎯">
         <button type="button" id="btn-select-goal-icon" class="form-control btn-goal-icon-picker">
             <span id="goal-icon-preview">🎯</span>
@@ -664,7 +686,7 @@
         </button>
     </div>
     <div class="form-group" style="flex: 2;">
-        <label>Responsável</label>
+        <label for="goal-owner">Responsável</label>
         <select id="goal-owner" class="form-control">
             <option value="Casal">Nós</option>
             <option value="IS">P1</option>
@@ -678,14 +700,14 @@
 </div>
                 <div id="group-goal-financial" class="goal-financial-group">
                     <div class="form-row">
-                        <div class="form-group flex-1 mb-0"><label>Alvo</label><input type="number" id="goal-target-fin" class="form-control"></div>
-                        <div class="form-group flex-1 mb-0"><label>Inicial</label><input type="number" id="goal-initial-fin" class="form-control"></div>
+                        <div class="form-group flex-1 mb-0"><label for="goal-target-fin">Alvo</label><input type="number" id="goal-target-fin" class="form-control" min="0.01" step="0.01"></div>
+                        <div class="form-group flex-1 mb-0"><label for="goal-initial-fin">Inicial</label><input type="number" id="goal-initial-fin" class="form-control" min="0" step="0.01"></div>
                     </div>
-                    <div class="form-group mb-0"><label>Prazo</label><input type="date" id="goal-deadline-fin" class="form-control"></div>
+                    <div class="form-group mb-0"><label for="goal-deadline-fin">Prazo</label><input type="date" id="goal-deadline-fin" class="form-control"></div>
                 </div>
                 <div id="group-goal-habit" class="form-row d-none">
-                    <div class="form-group flex-1"><label>Repetições</label><input type="number" id="goal-target-habit" class="form-control"></div>
-                    <div class="form-group flex-1"><label>Unidade</label><input type="text" id="goal-unit-habit" class="form-control"></div>
+                    <div class="form-group flex-1"><label for="goal-target-habit">Repetições</label><input type="number" id="goal-target-habit" class="form-control" min="1" step="1"></div>
+                    <div class="form-group flex-1"><label for="goal-unit-habit">Unidade</label><input type="text" id="goal-unit-habit" class="form-control"></div>
                 </div>
                 <button type="submit" class="btn-primary">Criar Meta</button>
             </form>
@@ -694,7 +716,7 @@
         <!-- Modal: Guardar Dinheiro -->
         <div class="bottom-sheet" id="deposit-bottom-sheet">
             <div class="sheet-handle"></div><div class="sheet-header"><h2>Guardar Dinheiro</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
-            <form id="form-add-deposit" class="sheet-body"><input type="hidden" id="deposit-goal-id"><div class="form-group"><label>Valor (R$)</label><input type="number" id="deposit-amount" class="form-control" required></div><button type="submit" class="btn-primary">Confirmar</button></form>
+            <form id="form-add-deposit" class="sheet-body"><input type="hidden" id="deposit-goal-id"><div class="form-group"><label for="deposit-amount">Valor (R$)</label><input type="number" id="deposit-amount" class="form-control" required min="0.01" step="0.01" required></div><button type="submit" class="btn-primary">Confirmar</button></form>
         </div>
         
         <!-- Modal: Opções de Lista -->
@@ -743,11 +765,11 @@
             </div>
             <form id="form-add-memory" class="sheet-body">
                 <div class="form-group">
-                    <label>Título do Momento</label>
+                    <label for="memory-title">Título do Momento</label>
                     <input type="text" id="memory-title" class="form-control" placeholder="Ex: Viagem inesquecível pra serra" required>
                 </div>
                 <div class="form-group">
-                    <label>Data</label>
+                    <label for="memory-date">Data</label>
                     <input type="date" id="memory-date" class="form-control" required>
                 </div>
                 <div class="form-group">
@@ -755,11 +777,11 @@
                     <button type="button" id="btn-upload-memory-photo" class="btn-primary btn-secondary">
                         <i class="ph ph-camera"></i> Escolher Foto
                     </button>
-                    <input type="file" id="file-memory-photo" accept="image/*" class="d-none">
+                    <input type="file" id="file-memory-photo" accept="image/jpeg,image/png,image/webp,image/gif" class="d-none">
                     <div id="memory-photo-preview" class="memory-photo-preview d-none"></div>
                 </div>
                 <div class="form-group">
-                    <label>Nota / História (Opcional)</label>
+                    <label for="memory-note">Nota / História (Opcional)</label>
                     <input type="text" id="memory-note" class="form-control" placeholder="Detalhes de como foi esse dia...">
                 </div>
                 <button type="submit" class="btn-primary">Salvar Memória</button>
@@ -775,11 +797,11 @@
             </div>
             <form id="form-add-note" class="sheet-body">
                 <div class="form-group">
-                    <label>Seu recadinho</label>
+                    <label for="note-text">Seu recadinho</label>
                     <textarea id="note-text" class="form-control textarea-note" rows="3" placeholder="Ex: Bom dia amor, deixei o café pronto! Amo você." required></textarea>
                 </div>
                 <div class="form-group">
-                    <label>Cor do Post-it</label>
+                    <label for="note-color">Cor do Post-it</label>
                     <select id="note-color" class="form-control">
                         <option value="yellow">💛 Amarelinho Clássico</option>
                         <option value="pink">🌸 Rosa Pastel</option>
@@ -787,7 +809,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Quanto tempo deve ficar visível?</label>
+                    <label for="note-duration">Quanto tempo deve ficar visível?</label>
                     <select id="note-duration" class="form-control">
                         <option value="24">24 horas</option>
                         <option value="72">3 dias</option>
@@ -807,11 +829,11 @@
             </div>
             <form id="form-create-list" class="sheet-body">
                 <div class="form-group">
-                    <label>Nome da Lista</label>
+                    <label for="create-list-name">Nome da Lista</label>
                     <input type="text" id="create-list-name" class="form-control" placeholder="Ex: Livros para Ler, Receitas" required>
                 </div>
                 <div class="form-group">
-                    <label>Tipo de Funcionalidade</label>
+                    <label for="create-list-type">Tipo de Funcionalidade</label>
                     <select id="create-list-type" class="form-control">
                         <option value="standard">Lista Comum (Afazeres / Compras)</option>
                         <option value="decision">🎲 Módulo de Decisão Rápida (Com Sorteador)</option>

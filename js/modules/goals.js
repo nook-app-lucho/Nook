@@ -1,5 +1,7 @@
 import { store } from '../store.js'; 
-import { triggerHaptic, formatCurrency, getInitials, escapeHTML, getLocalDateString, openModal, closeAllModals } from '../utils.js'; 
+import { triggerHaptic, formatCurrency, getInitials, escapeHTML, getLocalDateString, openModal, closeAllModals, runAction } from '../utils.js'; 
+
+import { sameId, goalProgress, validateGoal, numberValue, cents, goalForecast } from '../rules.js';
 
 const PRESET_ICONS = ['🎯', '✈️', '🏠', '🚗', '💰', '💍', '🏖️', '🎓', '🛒', '🎮', '👶', '🚴', '💻', '🐾', '❤️', '🍿'];
 
@@ -30,9 +32,11 @@ export const renderGoals = () => {
     });
 } else {
         store.goals.forEach(goal => {
-            if (goal.type === 'financial') totalSaved += goal.current;
+            if (goal.type === 'financial' && Number.isFinite(Number(goal.current)) && Number(goal.current) >= 0) totalSaved += Number(goal.current);
             
-            const percent = goal.target > 0 ? Math.min(100, Math.round((goal.current / goal.target) * 100)) : 0;
+            let progress;
+            try { progress = goalProgress(goal); } catch { progress = { percent: 0, invalid: true }; }
+            const percent = progress.percent;
             let displayOwner = goal.owner;
             if (goal.owner === 'VO') displayOwner = p2Init;
             if (goal.owner === 'IS') displayOwner = p1Init;
@@ -44,31 +48,16 @@ export const renderGoals = () => {
             const safeIcon = escapeHTML(goal.icon || '🎯');
             const safeUnit = escapeHTML(goal.unit || 'vezes');
             
-            let deadlineText = '';
-            if (goal.type === 'financial' && goal.deadline && goal.current < goal.target) {
-                const today = new Date(); today.setHours(0, 0, 0, 0);
-                const [y, m, d] = goal.deadline.split('-').map(Number);
-                const deadlineDate = new Date(y, m - 1, d); deadlineDate.setHours(0, 0, 0, 0);
-                const diffTime = deadlineDate - today;
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                const remainingMoney = goal.target - goal.current;
-                
-                if (diffDays > 0) {
-                    const months = Math.ceil(diffDays / 30.44);
-                    if (diffDays >= 30) {
-                        const monthlyRate = remainingMoney / (diffDays / 30.44);
-                        deadlineText = `<div class="goal-alert goal-alert-info"><strong>Faltam ${months} ${months === 1 ? 'mês' : 'meses'}.</strong> Vocês precisam guardar <strong>${formatCurrency(monthlyRate)}/mês</strong> para chegar lá!</div>`;
-                    } else {
-                        const weeklyRate = remainingMoney / (diffDays / 7 || 1);
-                        deadlineText = `<div class="goal-alert goal-alert-info"><strong>Faltam ${diffDays} ${diffDays === 1 ? 'dia' : 'dias'}.</strong> Vocês precisam guardar <strong>${formatCurrency(weeklyRate)}/semana</strong> para chegar lá!</div>`;
-                    }
-                } else if (diffDays === 0) {
-                    deadlineText = `<div class="goal-alert goal-alert-warning">O prazo final é <strong>hoje</strong>! Faltam ${formatCurrency(remainingMoney)}.</div>`;
-                } else {
-                    deadlineText = `<div class="goal-alert goal-alert-danger">Prazo esgotado!</div>`;
-                }
+            let deadlineText = progress.invalid ? '<div class="goal-alert goal-alert-danger">Esta meta tem dados inválidos. Não registre valores até revisar sua configuração.</div>' : '';
+            if (!progress.invalid && goal.deadline && goal.current < goal.target) {
+                try {
+                    const forecast = goalForecast(goal);
+                    if (forecast.days > 0) deadlineText = `<div class="goal-alert goal-alert-info"><strong>Faltam ${forecast.days} dias.</strong> Para chegar lá: <strong>${formatCurrency(forecast.rate)}/${forecast.period}</strong>.</div>`;
+                    else if (forecast.days === 0) deadlineText = `<div class="goal-alert goal-alert-warning">O prazo é hoje. Faltam ${formatCurrency(forecast.remaining)}.</div>`;
+                    else deadlineText = '<div class="goal-alert goal-alert-danger">Prazo esgotado!</div>';
+                } catch { deadlineText = '<div class="goal-alert goal-alert-warning">O prazo desta meta é inválido.</div>'; }
             }
-            
+
             const milestonesHTML = `
                 <div class="milestones-row">
                     <span class="${percent >= 25 ? 'milestone-active' : ''}">${percent >= 25 ? '✓ 25%' : '25%'}</span>
@@ -80,7 +69,7 @@ export const renderGoals = () => {
             const card = document.createElement('div');
             card.className = 'dash-card goal-card';
             
-            const textDetail = goal.type === 'financial' ? `${formatCurrency(goal.current)} de ${formatCurrency(goal.target)}` : `${goal.current} de ${goal.target} ${safeUnit}`;
+            const textDetail = goal.type === 'financial' ? `${formatCurrency(goal.current)} de ${formatCurrency(goal.target)}` : `${escapeHTML(goal.current)} de ${escapeHTML(goal.target)} ${safeUnit}`;
             const actionBtn = goal.type === 'financial' ? `<button class="btn-deposit btn-action-financial"><i class="ph ph-plus-circle"></i> Guardar</button>` : `<button class="btn-deposit btn-action-habit"><i class="ph ph-check-circle"></i> +1</button>`;
             
             card.innerHTML = `
@@ -88,7 +77,7 @@ export const renderGoals = () => {
                     <span class="dash-title">${safeIcon} ${safeTitle}</span>
                     <div class="goal-progress-wrap">
                         <span class="goal-percent">${percent}%</span>
-                        <div class="task-badge ${badgeClass}" style="width: 24px; height: 24px; font-size: 0.65rem;">${displayOwner}</div>
+                        <div class="task-badge ${badgeClass}" style="width: 24px; height: 24px; font-size: 0.65rem;">${escapeHTML(displayOwner)}</div>
                     </div>
                 </div>
                 <div class="progress-bar"><div class="progress-fill" style="width: ${percent}%;"></div></div>
@@ -108,30 +97,19 @@ export const renderGoals = () => {
                 document.getElementById('deposit-goal-id').value = goal.id;
                 openModal('deposit-bottom-sheet');
             });
-            card.querySelector('.btn-action-habit')?.addEventListener('click', () => {
-                if (goal.current < goal.target) {
-                    const prev = goal.current;
-                    const prevPercent = goal.target > 0 ? Math.floor((prev / goal.target) * 100) : 0;
-                    goal.current += 1;
-                    const newPercent = goal.target > 0 ? Math.floor((goal.current / goal.target) * 100) : 0;
-                    
-                    if (!goal.history) goal.history = [];
-                    goal.history.push({ date: getLocalDateString(new Date()), owner: store.profile ? store.profile.p1 : 'IS', amount: 1 });
-                    store.setGoals([...store.goals]);
-                    
-                    const milestones = [25, 50, 75, 100];
-                    const crossed = milestones.slice().reverse().find(m => prevPercent < m && newPercent >= m);
-                    if (crossed) {
-                        if (crossed === 100) { triggerHaptic([200, 100, 200, 100, 200]); if (window.confetti) confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#E07A5F', '#DB2777', '#FDF2F8'] }); }
-                        else { triggerHaptic([100, 50, 100]); if (window.confetti) confetti({ particleCount: 60, spread: 50, origin: { y: 0.7 }, colors: ['#E07A5F', '#2A9D8F', '#E9C46A'] }); }
-                    } else { triggerHaptic(20); }
-                    renderGoals();
-                }
+            card.querySelector('.btn-action-habit')?.addEventListener('click', async () => {
+                await runAction(card, async () => {
+                    const latest = store.goals.find(item => sameId(item.id, goal.id));
+                    if (!latest) throw new Error('Meta não encontrada.');
+                    const { current, target } = goalProgress(latest);
+                    if (current >= target) return;
+                    await store.saveRecord('goals', { ...latest, current: current + 1, history: [...(latest.history || []), { date: getLocalDateString(), owner: store.getAuthorName(), personId: store.getLoggedUser(), amount: 1 }] });
+                    celebrate(latest.current, current + 1, target); renderGoals();
+                });
             });
-            card.querySelector('.btn-delete-goal').addEventListener('click', () => {
-                triggerHaptic(20);
-                store.setGoals(store.goals.filter(g => g.id !== goal.id));
-                renderGoals();
+            card.querySelector('.btn-delete-goal').addEventListener('click', async () => {
+                if (!confirm('Excluir esta meta e seu histórico?')) return;
+                await runAction(card, async () => { await store.deleteRecord('goals', goal.id); renderGoals(); });
             });
             goalsContainer.appendChild(card);
         });
@@ -152,20 +130,26 @@ const openHistoryModal = (goal) => {
         listEl.innerHTML = `<li class="empty-state">Nenhum registro ainda.</li>`;
     } else {
         [...history].reverse().forEach(entry => {
-            const [y, m, d] = entry.date.split('-');
-            const valText = goal.type === 'financial' ? formatCurrency(entry.amount) : `+${entry.amount} ${goal.unit || 'vezes'}`;
+            const [y, m, d] = String(entry.date || '').split('-').map(escapeHTML);
+            const valText = goal.type === 'financial' ? formatCurrency(entry.amount) : `+${escapeHTML(entry.amount)} ${escapeHTML(goal.unit || 'vezes')}`;
             const li = document.createElement('li');
             li.className = 'task-item';
             li.innerHTML = `
                 <div class="task-text">
                     <strong class="task-item-title">${valText}</strong>
-                    <div class="task-item-subtitle">Feito por ${entry.owner} em ${d}/${m}/${y}</div>
+                    <div class="task-item-subtitle">Feito por ${escapeHTML(entry.owner)} em ${d}/${m}/${y}</div>
                 </div>
             `;
             listEl.appendChild(li);
         });
     }
     openModal('goal-history-bottom-sheet');
+};
+
+const celebrate = (before, after, target) => {
+    const crossed = [100, 75, 50, 25].find(mark => before / target * 100 < mark && after / target * 100 >= mark);
+    triggerHaptic(crossed ? [100, 50, 100] : 20);
+    if (crossed && window.confetti) window.confetti({ particleCount: crossed === 100 ? 150 : 60, spread: 70, origin: { y: 0.6 } });
 };
 
 export const initGoals = () => {
@@ -203,6 +187,7 @@ export const initGoals = () => {
         openModal('goal-bottom-sheet');
     });
 
+    document.getElementById('btn-select-goal-icon')?.addEventListener('click', () => document.getElementById('goal-icon-presets')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
     document.getElementById('goal-type')?.addEventListener('change', (e) => {
         if (e.target.value === 'financial') {
             document.getElementById('group-goal-financial')?.classList.remove('d-none');
@@ -213,61 +198,29 @@ export const initGoals = () => {
         }
     });
 
-    formGoal?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const type = document.getElementById('goal-type').value;
-        const targetValue = type === 'financial' ? parseFloat(document.getElementById('goal-target-fin').value) : parseInt(document.getElementById('goal-target-habit').value);
-        
-        const newGoal = {
-            id: Date.now(), 
-            type,
-            title: document.getElementById('goal-title').value,
-            icon: iconInput?.value || '🎯',
-            owner: document.getElementById('goal-owner').value,
-            target: isNaN(targetValue) || targetValue <= 0 ? 1 : targetValue,
-            current: type === 'financial' ? parseFloat(document.getElementById('goal-initial-fin').value) || 0 : 0,
-            unit: type === 'habit' ? document.getElementById('goal-unit-habit').value : null,
-            deadline: type === 'financial' ? document.getElementById('goal-deadline-fin').value : null,
-            history: []
-        };
-        if (newGoal.current > 0) {
-            newGoal.history.push({ date: getLocalDateString(new Date()), owner: store.profile ? store.profile.p1 : 'IS', amount: newGoal.current });
-        }
-        store.setGoals([...store.goals, newGoal]);
-        triggerHaptic(30); 
-        renderGoals(); 
-        closeAllModals(true); 
-        formGoal?.reset();
-        selectIcon('🎯');
+    formGoal?.addEventListener('submit', async e => {
+        e.preventDefault(); const form = e.currentTarget;
+        await runAction(form, async () => {
+            const type = document.getElementById('goal-type').value;
+            const data = validateGoal({ type, title: document.getElementById('goal-title').value, icon: iconInput?.value || '🎯', owner: document.getElementById('goal-owner').value, target: document.getElementById(type === 'financial' ? 'goal-target-fin' : 'goal-target-habit').value, current: type === 'financial' ? document.getElementById('goal-initial-fin').value : 0, unit: type === 'habit' ? document.getElementById('goal-unit-habit').value : null, deadline: type === 'financial' ? document.getElementById('goal-deadline-fin').value || null : null, history: [] });
+            if (data.current > 0) data.history.push({ date: getLocalDateString(), owner: store.getAuthorName(), personId: store.getLoggedUser(), amount: data.current });
+            await store.saveRecord('goals', data, { create: true });
+            triggerHaptic(30); renderGoals(); closeAllModals(true); form.reset(); selectIcon('🎯');
+            document.getElementById('group-goal-financial')?.classList.remove('d-none'); document.getElementById('group-goal-habit')?.classList.add('d-none');
+        });
     });
-
-    const formDep = document.getElementById('form-add-deposit');
-    formDep?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const goalId = parseInt(document.getElementById('deposit-goal-id').value);
-        const amount = parseFloat(document.getElementById('deposit-amount').value);
-        const targetGoal = store.goals.find(g => g.id === goalId);
-        
-        if (targetGoal && !isNaN(amount) && amount > 0) {
-            const prev = targetGoal.current;
-            const prevPercent = targetGoal.target > 0 ? Math.floor((prev / targetGoal.target) * 100) : 0;
-            targetGoal.current += amount;
-            const newPercent = targetGoal.target > 0 ? Math.floor((targetGoal.current / targetGoal.target) * 100) : 0;
-            
-            if (!targetGoal.history) targetGoal.history = [];
-            targetGoal.history.push({ date: getLocalDateString(new Date()), owner: store.profile ? store.profile.p1 : 'IS', amount: amount });
-            store.setGoals([...store.goals]);
-            
-            const milestones = [25, 50, 75, 100];
-            const crossed = milestones.slice().reverse().find(m => prevPercent < m && newPercent >= m);
-            if (crossed) {
-                if (crossed === 100) { triggerHaptic([200, 100, 200, 100, 200]); if (window.confetti) confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 }, colors: ['#E07A5F', '#DB2777', '#FDF2F8'] }); }
-                else { triggerHaptic([100, 50, 100]); if (window.confetti) confetti({ particleCount: 60, spread: 50, origin: { y: 0.7 }, colors: ['#E07A5F', '#2A9D8F', '#E9C46A'] }); }
-            } else { triggerHaptic(30); }
-            renderGoals();
-        }
-        closeAllModals(true); 
-        formDep?.reset();
+    document.getElementById('form-add-deposit')?.addEventListener('submit', async e => {
+        e.preventDefault(); const form = e.currentTarget;
+        await runAction(form, async () => {
+            const id = document.getElementById('deposit-goal-id').value;
+            const goal = store.goals.find(item => sameId(item.id, id));
+            if (!goal) throw new Error('Esta meta não está disponível. Recarregue.');
+            const amount = cents(numberValue(document.getElementById('deposit-amount').value, 'Depósito', { min: 0.01 })) / 100;
+            const { current, target } = goalProgress(goal);
+            const next = (cents(current) + cents(amount)) / 100;
+            await store.saveRecord('goals', { ...goal, current: next, history: [...(goal.history || []), { date: getLocalDateString(), owner: store.getAuthorName(), personId: store.getLoggedUser(), amount }] });
+            celebrate(current, next, target); renderGoals(); closeAllModals(true); form.reset();
+        });
     });
 
     renderGoals();

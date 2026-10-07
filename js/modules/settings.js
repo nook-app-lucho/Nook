@@ -1,5 +1,5 @@
 import { store } from '../store.js';
-import { triggerHaptic, showToast } from '../utils.js';
+import { triggerHaptic, showToast, runAction } from '../utils.js';
 
 export const applyTheme = (themeValue) => {
     const isDark = themeValue === 'dark' || (themeValue === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -79,7 +79,7 @@ export const initSettings = () => {
 
     document.getElementById('btn-logout-app')?.addEventListener('click', () => {
         if (confirm('Deseja realmente sair do Nook?')) {
-            store.logout();
+            runAction(document.getElementById('btn-logout-app'), () => store.logout());
         }
     });
 };

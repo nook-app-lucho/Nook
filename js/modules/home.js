@@ -1,5 +1,7 @@
 import { store, supabase } from '../store.js';
-import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency } from '../utils.js';
+import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency, runAction, safeImageUrl, imageBackground, validateImageFile } from '../utils.js';
+
+import { daysTogether, sameId, validDate } from '../rules.js';
 
 const MOODS = [
     { id: 'energia', icon: '⚡', label: 'Cheio(a) de energia' },
@@ -18,6 +20,8 @@ const PRESET_COVERS = [
 ];
 
 let targetPerson = 'p1';
+let memoryPhotoUrl = null;
+let memoryUploadPending = false;
 let editingMemoryId = null; // Variável para controlar a edição
 
 const getFirstName = (fullName, fallback = '') => {
@@ -30,7 +34,7 @@ export const renderHome = () => {
     const heroEl = document.getElementById('main-hero');
     if (heroEl && store.profile) {
         const cover = store.profile.heroCover || PRESET_COVERS[0];
-        heroEl.style.backgroundImage = `url(${cover})`;
+        heroEl.style.backgroundImage = imageBackground(cover);
     }
     
     const greetingElement = document.getElementById('dynamic-greeting');
@@ -50,22 +54,13 @@ export const renderHome = () => {
     const daysElement = document.getElementById('days-together');
     if (daysElement) {
         if (store.profile && store.profile.startDate) {
-            const [year, month, day] = store.profile.startDate.split('-').map(Number);
-            const startDate = new Date(year, month - 1, day);
-            const diffDays = Math.max(0, Math.ceil(Math.abs(new Date() - startDate) / (1000 * 60 * 60 * 24)));
-            daysElement.textContent = diffDays;
+            try { daysElement.textContent = daysTogether(store.profile.startDate); } catch { daysElement.textContent = '--'; }
         } else {
             daysElement.textContent = '--';
         }
     }
     
     const todayStr = getLocalDateString(new Date());
-    if (!store.moods) { store.moods = { p1: null, p2: null, date: todayStr }; }
-    else if (store.moods.date && store.moods.date !== todayStr) {
-        if (typeof store.setMoods === 'function') store.setMoods({ p1: null, p2: null, date: todayStr });
-        else store.moods = { p1: null, p2: null, date: todayStr };
-    } else { store.moods.date = todayStr; }
-    
     const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
     const partnerPersonId = myPersonId === 'p1' ? 'p2' : 'p1';
     
@@ -79,7 +74,7 @@ export const renderHome = () => {
         const avatarEl = document.getElementById(`mood-avatar-${slot}`);
         if (avatarEl) avatarEl.innerHTML = getAvatarHtml(personId, '24px');
         
-        const moodData = (store.moods && store.moods[personId]) ? MOODS.find(m => m.id === store.moods[personId]) : null;
+        const moodData = (store.moods?.date === todayStr && store.moods[personId]) ? MOODS.find(m => m.id === store.moods[personId]) : null;
         const iconEl = document.getElementById(`mood-icon-${slot}`);
         const textEl = document.getElementById(`mood-text-${slot}`);
         
@@ -130,7 +125,7 @@ export const renderHome = () => {
                 li.innerHTML = `
                     <div class="task-text">
                         <strong class="task-item-title">${escapeHTML(ev.title)}</strong>
-                        <div class="task-item-subtitle">${ev.time || ''}</div>
+                        <div class="task-item-subtitle">${escapeHTML(ev.time || '')}</div>
                     </div>
                     ${getAvatarHtml(ev.owner)}
                 `;
@@ -165,7 +160,7 @@ const renderMemoriesSection = () => {
             const diffAnos = today.getFullYear() - Number(y);
             document.getElementById('capsule-title').textContent = `Há ${diffAnos} ano${diffAnos > 1 ? 's' : ''} atrás...`;
             document.getElementById('capsule-text').textContent = capsuleMemory.title;
-            if (capsuleMemory.photo) document.getElementById('capsule-bg').style.backgroundImage = `url('${capsuleMemory.photo}')`;
+            document.getElementById('capsule-bg').style.backgroundImage = imageBackground(capsuleMemory.photo);
         } else {
             capsuleContainer.classList.add('d-none');
         }
@@ -179,15 +174,15 @@ const renderMemoriesSection = () => {
             </div>
         `;
     } else {
-        const sortedMemories = [...memories].sort((a, b) => b.date.localeCompare(a.date));
+        const sortedMemories = [...memories].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
         sortedMemories.forEach(mem => {
-            const [y, m, d] = mem.date.split('-');
+            const [y, m, d] = validDate(mem.date) ? mem.date.split('-') : ['?', '?', '?'];
             const card = document.createElement('div');
             card.className = 'memory-card';
             
             // Adicionado botão de editar na grid sobrescrevendo inline positions para não quebrar o CSS
             card.innerHTML = `
-                <div class="memory-photo" style="background-image: url('${mem.photo || 'https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=400'}')">
+                <div class="memory-photo" style="background-image: ${escapeHTML(imageBackground(mem.photo || PRESET_COVERS[0]))}">
                     <span class="memory-date-badge">${d}/${m}/${y}</span>
                     <div style="position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; z-index: 10;">
                         <button class="btn-edit-memory" title="Editar memória" style="position: static; background: rgba(0, 0, 0, 0.5); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer;"><i class="ph ph-pencil-simple"></i></button>
@@ -204,7 +199,10 @@ const renderMemoriesSection = () => {
                 e.stopPropagation();
                 triggerHaptic(10);
                 
+                if (memoryUploadPending) { alert('Aguarde o envio da foto terminar.'); return; }
                 editingMemoryId = mem.id;
+                memoryPhotoUrl = null;
+                document.getElementById('file-memory-photo').value = ''; 
                 
                 document.getElementById('memory-title').value = mem.title || '';
                 document.getElementById('memory-date').value = mem.date || '';
@@ -212,7 +210,7 @@ const renderMemoriesSection = () => {
                 
                 const prev = document.getElementById('memory-photo-preview');
                 if (mem.photo) {
-                    prev.style.backgroundImage = `url('${mem.photo}')`;
+                    prev.style.backgroundImage = imageBackground(mem.photo);
                     prev.classList.remove('d-none');
                 } else {
                     prev.style.backgroundImage = 'none';
@@ -225,14 +223,10 @@ const renderMemoriesSection = () => {
                 openModal('memory-bottom-sheet');
             });
 
-            card.querySelector('.btn-delete-memory').addEventListener('click', (e) => {
-                e.stopPropagation(); 
-                triggerHaptic(20);
-                if (confirm('Deseja realmente apagar esta memória?')) {
-                    store.setMemories(store.memories.filter(m => m.id !== mem.id));
-                    card.remove(); 
-                    if (store.memories.length === 0) renderMemoriesSection();
-                }
+            card.querySelector('.btn-delete-memory').addEventListener('click', async e => {
+                e.stopPropagation();
+                if (!confirm('Excluir esta memória?')) return;
+                await runAction(card, async () => { await store.deleteRecord('memories', mem.id); triggerHaptic(20); renderMemoriesSection(); });
             });
             memoriesGrid.appendChild(card);
         });
@@ -257,14 +251,14 @@ const renderNotesSection = () => {
         return;
     }
     
-    const sortedNotes = [...validNotes].sort((a, b) => b.id - a.id);
+    const sortedNotes = [...validNotes].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     sortedNotes.forEach((note, index) => {
         const card = document.createElement('div');
         const rotation = index % 2 === 0 ? 'rotate(2deg)' : 'rotate(-2deg)';
-        card.className = `note-card ${note.color || 'yellow'}`;
+        card.className = `note-card ${['yellow', 'pink', 'blue'].includes(note.color) ? note.color : 'yellow'}`;
         card.style.transform = rotation;
         
-        const reactionsDisplay = (note.reactions || []).join('');
+        const reactionsDisplay = escapeHTML((note.reactions || []).join(''));
         
         card.innerHTML = `
             <i class="ph-fill ph-push-pin note-pin"></i>
@@ -282,29 +276,25 @@ const renderNotesSection = () => {
         `;
         
         card.querySelectorAll('.btn-reaction').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                triggerHaptic(10);
-                const emoji = e.currentTarget.dataset.emoji;
-                if (!note.reactions) note.reactions = [];
-                note.reactions.push(emoji);
-                
-                store.setNotes([...store.notes]);
-                card.querySelector('.note-reactions-display').innerHTML = note.reactions.join('');
+            btn.addEventListener('click', async e => {
+                e.stopPropagation(); const emoji = e.currentTarget.dataset.emoji;
+                await runAction(card, async () => {
+                    const latest = store.notes.find(item => sameId(item.id, note.id));
+                    if (!latest) throw new Error('Este recado não está disponível.');
+                    await store.saveRecord('notes', { ...latest, reactions: [...(latest.reactions || []), emoji] });
+                    triggerHaptic(10); renderNotesSection();
+                });
             });
         });
-        
-        card.querySelector('.btn-delete-note').addEventListener('click', () => {
-            triggerHaptic(20);
-            if(confirm('Apagar este recadinho?')) {
-                store.setNotes(store.notes.filter(n => n.id !== note.id));
-                card.remove(); 
-                if (store.notes.length === 0) renderNotesSection();
-            }
+        card.querySelector('.btn-delete-note').addEventListener('click', async () => {
+            if (!confirm('Excluir este recado?')) return;
+            await runAction(card, async () => { await store.deleteRecord('notes', note.id); renderNotesSection(); });
         });
         grid.appendChild(card);
     });
 };
+
+const imageExtension = file => ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[file.type]);
 
 export const initHome = () => {
     document.getElementById('home-tasks-card')?.addEventListener('click', () => { triggerHaptic(10); document.querySelector('.nav-item[data-target="view-lists"]')?.click(); });
@@ -320,11 +310,8 @@ export const initHome = () => {
             PRESET_COVERS.forEach(url => {
                 const btn = document.createElement('div');
                 btn.className = 'hero-preset';
-                btn.style.backgroundImage = `url(${url})`;
-                btn.addEventListener('click', () => {
-                    store.setProfile({ ...store.profile, heroCover: url });
-                    triggerHaptic(20); renderHome(); closeAllModals(true);
-                });
+                btn.style.backgroundImage = imageBackground(url);
+                btn.addEventListener('click', async () => { await runAction(btn, async () => { await store.setProfile({ heroCover: url }); triggerHaptic(20); renderHome(); closeAllModals(true); }); });
                 grid.appendChild(btn);
             });
         }
@@ -333,28 +320,20 @@ export const initHome = () => {
     
     document.getElementById('btn-upload-hero')?.addEventListener('click', () => document.getElementById('file-hero-upload')?.click());
     
-    document.getElementById('file-hero-upload')?.addEventListener('change', async (e) => {
+    document.getElementById('file-hero-upload')?.addEventListener('change', async e => {
         const file = e.target.files[0];
         if (!file) return;
-        
-        const fileExt = file.name.split('.').pop();
-        const fileName = `covers/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-        try {
-            const { data, error } = await supabase.storage
-                .from('photos')
-                .upload(fileName, file);
+        await runAction(document.getElementById('hero-bottom-sheet'), async () => {
+            validateImageFile(file);
+            const fileName = `covers/${crypto.randomUUID()}.${imageExtension(file)}`;
+            const { error } = await supabase.storage.from('photos').upload(fileName, file);
             if (error) throw error;
-            const { data: publicUrlData } = supabase.storage
-                .from('photos')
-                .getPublicUrl(fileName);
-            store.setProfile({ ...store.profile, heroCover: publicUrlData.publicUrl });
+            const { data } = supabase.storage.from('photos').getPublicUrl(fileName);
+            await store.setProfile({ heroCover: data.publicUrl });
             triggerHaptic(30); renderHome(); closeAllModals(true);
-        } catch (err) {
-            console.error('Erro ao subir foto de capa:', err);
-            alert('Falha ao enviar a foto de capa.');
-        }
+        });
     });
-    
+
     const optionsContainer = document.getElementById('mood-options-container');
     document.getElementById('btn-mood-p1')?.addEventListener('click', () => {
         targetPerson = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
@@ -374,25 +353,20 @@ export const initHome = () => {
             const btn = document.createElement('div');
             btn.className = 'mood-option';
             btn.innerHTML = `<span class="mood-option-emoji">${mood.icon}</span><span class="mood-option-text">${mood.label}</span>`;
-            btn.addEventListener('click', () => {
-                const todayStr = getLocalDateString(new Date());
-                const currentMoods = store.moods ? { ...store.moods } : { p1: null, p2: null, date: todayStr };
-                currentMoods[targetPerson] = mood.id; currentMoods.date = todayStr;
-                
-                if (typeof store.setMoods === 'function') store.setMoods(currentMoods); else store.moods = currentMoods;
-                triggerHaptic(30); renderHome(); closeAllModals(true);
+            btn.addEventListener('click', async () => {
+                await runAction(optionsContainer, async () => { await store.setMood(mood.id); triggerHaptic(30); renderHome(); closeAllModals(true); });
             });
             optionsContainer.appendChild(btn);
         });
     }
     
-    let memoryPhotoBase64 = null;
     document.getElementById('btn-open-memory-modal')?.addEventListener('click', () => {
+        if (memoryUploadPending) { alert('Aguarde o envio da foto terminar.'); return; }
         editingMemoryId = null; // Garante modo de criação novo
         document.getElementById('form-add-memory')?.reset();
         const prev = document.getElementById('memory-photo-preview');
         if (prev) { prev.style.backgroundImage = 'none'; prev.classList.add('d-none'); }
-        memoryPhotoBase64 = null;
+        memoryPhotoUrl = null;
         const dateInput = document.getElementById('memory-date');
         if (dateInput) dateInput.value = getLocalDateString(new Date());
         
@@ -404,77 +378,46 @@ export const initHome = () => {
     
     document.getElementById('btn-upload-memory-photo')?.addEventListener('click', () => document.getElementById('file-memory-photo')?.click());
     
-    document.getElementById('file-memory-photo')?.addEventListener('change', async (e) => {
+    document.getElementById('file-memory-photo')?.addEventListener('change', async e => {
         const file = e.target.files[0];
         if (!file) return;
-        const fileExt = file.name.split('.').pop();
-        const fileName = `memories/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-        try {
-            const { data, error } = await supabase.storage
-                .from('photos')
-                .upload(fileName, file);
-            if (error) throw error;
-            const { data: publicUrlData } = supabase.storage
-                .from('photos')
-                .getPublicUrl(fileName);
-            memoryPhotoBase64 = publicUrlData.publicUrl;
-            
-            const prev = document.getElementById('memory-photo-preview');
-            if (prev) { 
-                prev.style.backgroundImage = `url('${memoryPhotoBase64}')`; 
-                prev.classList.remove('d-none'); 
-            }
-            triggerHaptic(20);
-        } catch (err) {
-            console.error('Erro ao subir foto da memória:', err);
-            alert('Falha ao enviar a foto da memória.');
-        }
+        await runAction(document.getElementById('form-add-memory'), async () => {
+            validateImageFile(file); memoryUploadPending = true;
+            try {
+                const fileName = `memories/${crypto.randomUUID()}.${imageExtension(file)}`;
+                const { error } = await supabase.storage.from('photos').upload(fileName, file);
+                if (error) throw error;
+                const { data } = supabase.storage.from('photos').getPublicUrl(fileName);
+                memoryPhotoUrl = data.publicUrl;
+                const preview = document.getElementById('memory-photo-preview');
+                preview.style.backgroundImage = imageBackground(memoryPhotoUrl); preview.classList.remove('d-none'); triggerHaptic(20);
+            } finally { memoryUploadPending = false; }
+        });
     });
-    
-    document.getElementById('form-add-memory')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const title = document.getElementById('memory-title').value.trim();
-        const date = document.getElementById('memory-date').value;
-        const note = document.getElementById('memory-note').value.trim();
-        if (!title || !date) return;
-        
-        // Verifica se é edição ou criação
-        if (editingMemoryId) {
-            const mem = store.memories.find(m => m.id === editingMemoryId);
-            if (mem) {
-                mem.title = title;
-                mem.date = date;
-                mem.note = note;
-                // Apenas altera a foto se uma nova foi inserida
-                if (memoryPhotoBase64) mem.photo = memoryPhotoBase64;
-            }
-        } else {
-            const newMemory = { id: Date.now(), title, date, note, photo: memoryPhotoBase64 };
-            store.memories.push(newMemory);
-        }
-        
-        store.setMemories([...store.memories]);
-        triggerHaptic(30); 
-        renderHome(); 
-        closeAllModals(true);
+
+    document.getElementById('form-add-memory')?.addEventListener('submit', async e => {
+        e.preventDefault(); const form = e.currentTarget;
+        await runAction(form, async () => {
+            if (memoryUploadPending) throw new Error('Aguarde o envio da foto.');
+            const existing = editingMemoryId != null ? store.memories.find(item => sameId(item.id, editingMemoryId)) : null;
+            if (editingMemoryId != null && !existing) throw new Error('Esta memória mudou. Recarregue.');
+            const data = { ...(existing || {}), title: document.getElementById('memory-title').value.trim(), date: document.getElementById('memory-date').value, note: document.getElementById('memory-note').value.trim(), photo: memoryPhotoUrl || existing?.photo || null };
+            const saved = await store.saveRecord('memories', data, { create: editingMemoryId == null });
+            editingMemoryId = saved.id; memoryPhotoUrl = null;
+            triggerHaptic(30); renderHome(); closeAllModals(true);
+        });
     });
-    
+
     document.getElementById('btn-open-note-modal')?.addEventListener('click', () => { document.getElementById('form-add-note')?.reset(); openModal('note-bottom-sheet'); });
-    document.getElementById('form-add-note')?.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const text = document.getElementById('note-text').value.trim();
-        const color = document.getElementById('note-color').value;
-        const durationHours = parseInt(document.getElementById('note-duration')?.value || '168');
-        if (!text) return;
-        
-        const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
-        const myName = myPersonId === 'p1' ? (store.profile?.p1 || 'P1') : (store.profile?.p2 || 'P2');
-        const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString();
-        
-        const newNote = { id: Date.now(), text, color, owner: myName, date: new Date().toISOString(), expiresAt: expiresAt, reactions: [] };
-        store.setNotes([...(store.notes || []), newNote]);
-        triggerHaptic(30); renderHome(); closeAllModals(true);
+    document.getElementById('form-add-note')?.addEventListener('submit', async e => {
+        e.preventDefault(); const form = e.currentTarget;
+        await runAction(form, async () => {
+            const hours = Number(document.getElementById('note-duration').value || 168);
+            if (![24, 72, 168].includes(hours)) throw new Error('Escolha a duração do recado.');
+            await store.saveRecord('notes', { text: document.getElementById('note-text').value.trim(), color: document.getElementById('note-color').value, owner: store.getAuthorName(), date: new Date().toISOString(), expiresAt: new Date(Date.now() + hours * 3600000).toISOString(), reactions: [] }, { create: true });
+            triggerHaptic(30); renderHome(); closeAllModals(true); form.reset();
+        });
     });
-    
+
     renderHome();
 };
