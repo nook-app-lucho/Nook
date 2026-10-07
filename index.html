@@ -21,7 +21,7 @@
             var status = document.getElementById('app-status');
             if (status) { status.textContent = 'Não foi possível carregar o Nook. Verifique a conexão e recarregue a página.'; status.classList.remove('d-none'); }
             var retry = document.getElementById('btn-retry-load');
-            if (retry) retry.onclick = function () { window.location.reload(); };
+            if (retry) { retry.classList.remove('d-none'); retry.onclick = function () { window.location.reload(); }; }
         }
         window.addEventListener('error', function (event) {
             var target = event.target;
@@ -60,7 +60,7 @@
 <body>
     <main class="app-container">
         <div id="app-status" role="status" class="empty-state">Carregando seu espaço…</div>
-        <button id="btn-retry-load" class="btn-primary btn-secondary" type="button">Tentar carregar novamente</button>
+        <button id="btn-retry-load" class="btn-primary btn-secondary d-none" type="button">Tentar carregar novamente</button>
         <!-- TELA DE LOGIN / CADASTRO -->
         <div id="view-login" class="view">
             <section class="hero-dashboard hero-login">

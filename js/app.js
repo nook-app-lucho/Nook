@@ -30,6 +30,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (routing) return;
         routing = true;
         const loading = document.getElementById('app-status');
+        const retry = document.getElementById('btn-retry-load');
+        retry?.classList.add('d-none');
         if (loading) { loading.textContent = 'Carregando seu espaço…'; loading.classList.remove('d-none'); }
         try {
             const session = await store.checkSession();
@@ -49,6 +51,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             // Falha de carregamento não deve ser confundida com coleções vazias.
             showToast(error.message || 'Não foi possível carregar o espaço.');
+            retry?.classList.remove('d-none');
             if (loading) { loading.textContent = 'Não foi possível carregar. Use “Tentar novamente”.'; loading.classList.remove('d-none'); }
             throw error;
         } finally {
