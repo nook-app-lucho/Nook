@@ -1,7 +1,8 @@
 import { store } from '../store.js'; 
-import { triggerHaptic, formatCurrency, escapeHTML, getAvatarHtml, openModal, closeAllModals, runAction } from '../utils.js'; 
+import { triggerHaptic, formatCurrency, escapeHTML, getAvatarHtml, openModal, closeAllModals, runAction, editWarning, saveFormEdit } from '../utils.js'; 
 
 import { localDate, sameId, financeShare, financialSummary, validateExpense, validDate } from '../rules.js';
+let expenseEditContext = null;
 let selectedHistoryMonth = localDate().slice(0, 7); 
 
 const CAT_INFO = {
@@ -18,6 +19,8 @@ const updateFinancesSummary = () => {
     catch (error) {
         const card = document.getElementById('fin-settlement-card');
         card?.classList.remove('d-none');
+        const warning = document.getElementById('fin-data-warning');
+        if (warning) { warning.textContent = error.message; warning.classList.remove('d-none'); }
         const total = document.getElementById('val-fin-m1'); if (total) total.textContent = 'Revisar dados';
         document.getElementById('fin-chart-card')?.classList.add('d-none');
         const text = document.getElementById('fin-settlement-text');
@@ -186,12 +189,15 @@ export const renderFinances = () => {
         });
 
         li.querySelector('.btn-edit-expense').addEventListener('click', () => {
-            document.getElementById('expense-id').value = exp.id;
-            document.getElementById('expense-title').value = exp.title;
-            document.getElementById('expense-amount').value = exp.amount;
-            document.getElementById('expense-date').value = validDate(exp.date) ? exp.date : '';
-            document.getElementById('expense-category').value = exp.category;
-            document.getElementById('expense-owner').value = exp.owner;
+            expenseEditContext = store.captureEdit('expenses', exp.id);
+            const opened = expenseEditContext.record;
+            editWarning('expense-edit-warning');
+            document.getElementById('expense-id').value = opened.id;
+            document.getElementById('expense-title').value = opened.title;
+            document.getElementById('expense-amount').value = opened.amount;
+            document.getElementById('expense-date').value = validDate(opened.date) ? opened.date : '';
+            document.getElementById('expense-category').value = opened.category;
+            document.getElementById('expense-owner').value = opened.owner;
             document.getElementById('expense-modal-title').textContent = "Editar Conta";
             openModal('expense-bottom-sheet');
         });
@@ -238,6 +244,7 @@ export const initFinances = () => {
     });
 
     document.getElementById('btn-big-add-expense')?.addEventListener('click', () => {
+        expenseEditContext = null; editWarning('expense-edit-warning');
         document.getElementById('form-add-expense').reset();
         document.getElementById('expense-id').value = '';
         document.getElementById('expense-modal-title').textContent = 'Nova Conta';
@@ -248,10 +255,10 @@ export const initFinances = () => {
         e.preventDefault(); const form = e.currentTarget;
         await runAction(form, async () => {
             const id = document.getElementById('expense-id').value;
-            const existing = id ? store.expenses.find(exp => sameId(exp.id, id)) : null;
-            if (id && !existing) throw new Error('Esta conta mudou. Recarregue antes de editar.');
+            const existing = id ? expenseEditContext?.record : null;
+            if (id && (!existing || !sameId(existing.id, id))) throw new Error('Esta conta mudou. Recarregue antes de editar.');
             const data = validateExpense({ ...(existing || { completed: false }), title: document.getElementById('expense-title').value, amount: document.getElementById('expense-amount').value, category: document.getElementById('expense-category').value, date: document.getElementById('expense-date').value, owner: document.getElementById('expense-owner').value });
-            const saved = await store.saveRecord('expenses', data, { create: !id });
+            const saved = id ? await saveFormEdit(expenseEditContext, data, 'expense-edit-warning') : await store.saveRecord('expenses', data, { create: true });
             document.getElementById('expense-id').value = saved.id;
             triggerHaptic(30); renderFinances(); closeAllModals(true); form.reset();
         });

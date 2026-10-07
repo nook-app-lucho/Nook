@@ -1,7 +1,9 @@
 import { store } from '../store.js'; 
-import { triggerHaptic, escapeHTML, getAvatarHtml, openModal, closeAllModals, enableDesktopScroll, showToast, runAction } from '../utils.js'; 
+import { triggerHaptic, escapeHTML, getAvatarHtml, openModal, closeAllModals, enableDesktopScroll, showToast, runAction, editWarning, saveFormEdit } from '../utils.js'; 
 
-import { sameId, nonEmpty } from '../rules.js';
+import { sameId, nonEmpty, listDisplayName } from '../rules.js';
+let itemEditContext = null;
+let editingItemId = null;
 let activeListId = null; 
 let draggedItemIndex = null; 
 let activeFilter = 'all'; 
@@ -33,7 +35,7 @@ export const renderAllListsModal = () => {
     const query = (searchInput?.value || '').toLowerCase().trim();
     grid.innerHTML = '';
 
-    const filteredLists = (store.lists || []).filter(l => l.name.toLowerCase().includes(query));
+    const filteredLists = (store.lists || []).filter(l => listDisplayName(l).toLowerCase().includes(query));
 
     if (filteredLists.length === 0) {
         grid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">Nenhuma lista encontrada.</div>`;
@@ -50,7 +52,7 @@ export const renderAllListsModal = () => {
         card.className = `list-card-item ${isActive ? 'active-list' : ''}`;
         card.innerHTML = `
             <div class="list-card-title">
-                ${isDecision ? '<i class="ph-bold ph-dice-five text-primary mr-4"></i>' : ''}${escapeHTML(list.name)}
+                ${isDecision ? '<i class="ph-bold ph-dice-five text-primary mr-4"></i>' : ''}${escapeHTML(listDisplayName(list))}
             </div>
             <div class="list-card-meta">
                 <span>${itemCount} ${itemCount === 1 ? 'item' : 'itens'}</span>
@@ -70,6 +72,9 @@ export const renderAllListsModal = () => {
 };
 
 export const renderLists = () => {
+    const warning = document.getElementById('lists-data-warning');
+    const affected = store.lists.filter(list => list._invalidItems?.length || typeof list.name !== 'string' || !list.name.trim());
+    if (warning) { warning.textContent = affected.length ? `${affected.length} lista(s) precisa(m) de revisão. Use as opções para corrigir nomes. Itens inválidos foram isolados; o conteúdo original continua no banco e alterações dessa lista ficam bloqueadas até a revisão.` : ''; warning.classList.toggle('d-none', !affected.length); }
     const tabsContainer = document.getElementById('lists-tabs-container');
     const taskContainer = document.getElementById('task-list-container');
     const listActions = document.querySelector('.list-actions');
@@ -114,7 +119,7 @@ export const renderLists = () => {
     const currentList = store.lists.find(l => sameId(l.id, activeListId)) || store.lists[0];
     activeListId = currentList.id;
     if (document.getElementById('active-list-header-title')) {
-        document.getElementById('active-list-header-title').textContent = currentList ? currentList.name : 'Atividades';
+        document.getElementById('active-list-header-title').textContent = currentList ? listDisplayName(currentList) : 'Atividades';
     }
     
     store.lists.forEach(list => {
@@ -123,8 +128,8 @@ export const renderLists = () => {
         const isActive = list.id === activeListId;
         
         btn.className = `tab-pill ${isActive ? 'active' : 'outline'} ${isDecision ? 'tab-decision' : ''}`;
-        if (isDecision) btn.innerHTML = `<i class="ph-bold ph-dice-five mr-4"></i>${escapeHTML(list.name)}`;
-        else btn.innerHTML = escapeHTML(list.name);
+        if (isDecision) btn.innerHTML = `<i class="ph-bold ph-dice-five mr-4"></i>${escapeHTML(listDisplayName(list))}`;
+        else btn.innerHTML = escapeHTML(listDisplayName(list));
         
         btn.addEventListener('click', () => { triggerHaptic(10); activeListId = list.id; renderLists(); });
         tabsContainer.appendChild(btn);
@@ -142,7 +147,7 @@ export const renderLists = () => {
     if (decisionBanner) {
         if (currentList.type === 'decision') {
             decisionBanner.classList.remove('d-none');
-            document.getElementById('decision-banner-title').textContent = `Dúvida no ${currentList.name}?`;
+            document.getElementById('decision-banner-title').textContent = `Dúvida no ${listDisplayName(currentList)}?`;
         } else { decisionBanner.classList.add('d-none'); }
     }
     
@@ -212,9 +217,12 @@ export const renderLists = () => {
             });
 
             li.querySelector('.btn-edit-item').addEventListener('click', () => {
-                document.getElementById('edit-task-id').value = item.id;
-                document.getElementById('edit-task-text').value = item.text;
-                document.getElementById('edit-task-owner').value = item.owner || 'Casal';
+                itemEditContext = store.captureEdit('lists', currentList.id);
+                const opened = itemEditContext.record.items.find(entry => sameId(entry.id, item.id));
+                editingItemId = opened.id; editWarning('task-edit-warning');
+                document.getElementById('edit-task-id').value = opened.id;
+                document.getElementById('edit-task-text').value = opened.text;
+                document.getElementById('edit-task-owner').value = opened.owner || 'Casal';
                 openModal('task-edit-bottom-sheet');
             });
             
@@ -251,7 +259,7 @@ const runDecisionRoulette = () => {
     const modalTitle = document.getElementById('roulette-modal-title');
     const resultBox = document.getElementById('roulette-result-display');
     const btnConfirm = document.getElementById('btn-accept-decision');
-    modalTitle.textContent = `Sortear: ${currentList.name}`;
+    modalTitle.textContent = `Sortear: ${listDisplayName(currentList)}`;
     resultBox.textContent = "Girando a roleta...";
     btnConfirm.classList.add('d-none');
     openModal('roulette-bottom-sheet');
@@ -299,13 +307,13 @@ export const initLists = () => {
     document.getElementById('btn-rename-list')?.addEventListener('click', async e => {
         const list = store.lists.find(item => sameId(item.id, activeListId));
         if (!list) return;
-        const name = prompt('Digite o novo nome para a lista:', list.name);
+        const name = prompt('Digite o novo nome para a lista:', list.name || '');
         if (name === null) return;
         await runAction(e.currentTarget, async () => { await store.saveRecord('lists', { ...list, name: nonEmpty(name, 'Nome') }); renderLists(); closeAllModals(true); });
     });
     document.getElementById('btn-delete-list')?.addEventListener('click', async e => {
         const list = store.lists.find(item => sameId(item.id, activeListId));
-        if (!list || !confirm(`Excluir a lista "${list.name}" e seus itens?`)) return;
+        if (!list || !confirm(`Excluir a lista "${listDisplayName(list)}" e seus itens?`)) return;
         await runAction(e.currentTarget, async () => { await store.deleteRecord('lists', list.id); activeListId = store.lists[0]?.id ?? null; renderLists(); closeAllModals(true); });
     });
     document.getElementById('form-create-list')?.addEventListener('submit', async e => {
@@ -324,7 +332,9 @@ export const initLists = () => {
             const id = document.getElementById('edit-task-id').value;
             const text = nonEmpty(document.getElementById('edit-task-text').value, 'Tarefa');
             const owner = document.getElementById('edit-task-owner').value;
-            await editListItem(activeListId, id, item => ({ ...item, text, owner })); renderLists(); closeAllModals(true);
+            if (!itemEditContext || !sameId(id, editingItemId)) throw new Error('Reabra a edição deste item.');
+            const items = itemEditContext.record.items.map(item => sameId(item.id, id) ? { ...item, text, owner } : item);
+            await saveFormEdit(itemEditContext, { items }, 'task-edit-warning'); renderLists(); closeAllModals(true);
         });
     });
     document.getElementById('form-add-task')?.addEventListener('submit', async e => {

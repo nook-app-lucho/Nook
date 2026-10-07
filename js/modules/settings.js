@@ -1,5 +1,5 @@
 import { store } from '../store.js';
-import { triggerHaptic, showToast, runAction } from '../utils.js';
+import { triggerHaptic, showToast, runAction, openModal as openSheet, closeModal as closeSheet } from '../utils.js';
 
 export const applyTheme = (themeValue) => {
     const isDark = themeValue === 'dark' || (themeValue === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -20,14 +20,13 @@ export const initSettings = () => {
     });
 
     const btnOpen = document.getElementById('btn-open-theme-modal');
-    const overlay = document.getElementById('general-overlay');
+
     const sheet = document.getElementById('theme-bottom-sheet');
     const themeBtns = document.querySelectorAll('.btn-theme-option');
 
     const openModal = () => {
         triggerHaptic(10);
-        overlay?.classList.add('active');
-        sheet?.classList.add('active');
+        openSheet('theme-bottom-sheet');
         
         themeBtns.forEach(btn => {
             if (btn.getAttribute('data-theme-value') === store.theme) {
@@ -60,12 +59,11 @@ export const initSettings = () => {
     }
 
     const closeModal = () => {
-        overlay?.classList.remove('active');
-        sheet?.classList.remove('active');
+        closeSheet('theme-bottom-sheet');
     };
 
     btnOpen?.addEventListener('click', openModal);
-    overlay?.addEventListener('click', closeModal);
+
 
     themeBtns.forEach(btn => {
         btn.addEventListener('click', () => {

@@ -1,5 +1,5 @@
 import { store, supabase } from '../store.js'; 
-import { triggerHaptic, getInitials, runAction, validateImageFile, imageBackground } from '../utils.js'; 
+import { triggerHaptic, getInitials, runAction, validateImageFile, imageBackground, openModal, closeModal, initModalController } from '../utils.js'; 
 import { renderFinances } from './finances.js'; 
 import { renderHome } from './home.js'; 
 
@@ -101,7 +101,7 @@ const processImageFile = async (file, callback) => {
 };
 
 const initEmojiPicker = () => {
-    const overlay = document.getElementById('general-overlay');
+    initModalController();
     const sheet = document.getElementById('emoji-picker-sheet');
     const grid = document.getElementById('emoji-grid');
     const btnClose = document.getElementById('btn-close-emoji-picker');
@@ -124,19 +124,16 @@ const initEmojiPicker = () => {
         });
     }
     const closeEmojiPicker = () => { 
-        overlay?.classList.remove('active'); 
-        sheet?.classList.remove('active'); 
-        currentTargetPerson = null; 
+        if (closeModal('emoji-picker-sheet')) currentTargetPerson = null; 
     };
     btnClose?.addEventListener('click', closeEmojiPicker);
-    overlay?.addEventListener('click', closeEmojiPicker);
+
 };
 
 export const openEmojiPicker = (personId) => {
     currentTargetPerson = personId;
     triggerHaptic(10);
-    document.getElementById('general-overlay')?.classList.add('active');
-    document.getElementById('emoji-picker-sheet')?.classList.add('active');
+    openModal('emoji-picker-sheet');
 };
 
 const setupAvatarPicker = (personId) => {

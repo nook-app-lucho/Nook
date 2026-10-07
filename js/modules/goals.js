@@ -58,6 +58,8 @@ export const renderGoals = () => {
                 } catch { deadlineText = '<div class="goal-alert goal-alert-warning">O prazo desta meta é inválido.</div>'; }
             }
 
+            if (goal._invalidHistory?.length) deadlineText += `<div class="goal-alert goal-alert-warning" role="alert">${goal._invalidHistory.length} registro(s) inválido(s) no histórico. Os dados originais estão preservados no banco. Revise antes de registrar novos valores.</div>`;
+
             const milestonesHTML = `
                 <div class="milestones-row">
                     <span class="${percent >= 25 ? 'milestone-active' : ''}">${percent >= 25 ? '✓ 25%' : '25%'}</span>
@@ -125,8 +127,9 @@ const openHistoryModal = (goal) => {
     if (!listEl) return;
     listEl.innerHTML = '';
     const history = goal.history || [];
+    if (goal._invalidHistory?.length) listEl.innerHTML = '<li class="empty-state">Parte do histórico é inválida e foi isolada. O original permanece no banco.</li>';
     
-    if (history.length === 0) {
+    if (history.length === 0 && !goal._invalidHistory?.length) {
         listEl.innerHTML = `<li class="empty-state">Nenhum registro ainda.</li>`;
     } else {
         [...history].reverse().forEach(entry => {

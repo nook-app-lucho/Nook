@@ -1,7 +1,7 @@
 const SUPABASE_URL = 'https://ovjuaxcbtjykjlkudtay.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_UaYVZI-rhN-Bi2pdwjiqJA_oO2RzbbL';
 export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-import { localDate, sameId, nonEmpty, numberValue, validDate, validateExpense, validateGoal } from './rules.js';
+import { localDate, sameId, nonEmpty, numberValue, validDate, validateExpense, validateGoal, normalizeListItems, normalizeGoalHistory } from './rules.js';
 
 const copy = value => JSON.parse(JSON.stringify(value));
 const tableKeys = ['expenses', 'lists', 'agenda', 'goals', 'memories', 'notes'];
@@ -33,16 +33,28 @@ const fromRow = (table, row) => {
     const item = { ...row };
     if (table === 'agenda') { item.createdBy = row.created_by; delete item.created_by; }
     if (table === 'notes') { item.expiresAt = row.expires_at; item.reactions = Array.isArray(row.reactions) ? row.reactions : []; delete item.expires_at; }
-    if (table === 'lists') item.items = Array.isArray(row.items) ? row.items : [];
-    if (table === 'goals') { item.target = Number(row.target); item.current = Number(row.current); item.history = Array.isArray(row.history) ? row.history.map(entry => ({ ...entry, amount: Number(entry.amount) })) : []; }
+    if (table === 'lists') {
+        const normalized = normalizeListItems(row.items);
+        item.items = normalized.items;
+        if (normalized.invalid.length) { item._invalidItems = normalized.invalid; item._rawItems = copy(row.items ?? null); }
+    }
+    if (table === 'goals') {
+        item.target = Number(row.target); item.current = Number(row.current);
+        const normalized = normalizeGoalHistory(row.history);
+        item.history = normalized.history;
+        if (normalized.invalid.length) { item._invalidHistory = normalized.invalid; item._rawHistory = copy(row.history ?? null); }
+    }
     if (table === 'expenses') item.amount = Number(row.amount);
     return item;
 };
 const validate = (table, input) => {
     if (table === 'expenses') return validateExpense(input);
-    if (table === 'goals') return validateGoal(input);
+    if (table === 'goals') {
+        if (input._invalidHistory?.length || normalizeGoalHistory(input.history).invalid.length) throw new Error('Esta meta tem histórico inválido. Os dados originais estão preservados; revise o histórico antes de registrar novos valores.');
+        return validateGoal(input);
+    }
     const item = { ...input };
-    if (table === 'lists') { item.name = nonEmpty(item.name, 'Nome da lista'); if (!Array.isArray(item.items)) throw new Error('Itens da lista inválidos.'); }
+    if (table === 'lists') { item.name = nonEmpty(item.name, 'Nome da lista'); if (item._invalidItems?.length || normalizeListItems(item.items).invalid.length) throw new Error('Esta lista tem itens inválidos. Os dados originais estão preservados; revise a lista antes de alterá-la.'); }
     if (table === 'agenda') {
         item.title = nonEmpty(item.title, 'Título');
         if (!validDate(item.date) || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(item.time || '')) throw new Error('Informe data e horário válidos.');
@@ -157,9 +169,32 @@ export const store = {
         const next = previous.catch(() => {}).then(work); this._queues.set(key, next);
         try { return await next; } finally { if (this._queues.get(key) === next) this._queues.delete(key); }
     },
+    captureEdit(table, id) {
+        const couple = this.requireCouple();
+        const record = this[table]?.find(item => sameId(item.id, id));
+        if (!record) throw new Error('Este registro não está disponível. Reabra a edição.');
+        return { table, id: record.id, couple, record: copy(record), fingerprint: JSON.stringify(record) };
+    },
+    async saveEdit(context, patch) {
+        const conflict = () => {
+            const error = new Error('Este registro mudou desde que você abriu a edição. Seus dados digitados foram mantidos. Feche e reabra a edição para conferir a versão atual antes de salvar.');
+            error.code = 'EDIT_CONFLICT'; return error;
+        };
+        if (!context || !sameId(context.couple, this.requireCouple())) throw conflict();
+        const latest = this[context.table]?.find(item => sameId(item.id, context.id));
+        if (!latest || JSON.stringify(latest) !== context.fingerprint) throw conflict();
+        if ((!Number.isSafeInteger(context.record.nook_version) || context.record.nook_version < 0)) throw new Error('O controle de versões desta tabela não foi encontrado. Confira nook_version e o trigger do SQL já aplicado antes de editar.');
+        try { return await this.saveRecord(context.table, { ...context.record, ...patch, id: context.id, nook_version: context.record.nook_version }); }
+        catch (error) {
+            if (error.code === 'EDIT_CONFLICT') throw conflict();
+            throw error;
+        }
+    },
     async saveRecord(table, input, { create = false } = {}) {
         if (!tableKeys.includes(table)) throw new Error('Tabela inválida.');
         const couple = this.requireCouple(), generation = this._generation;
+        const current = create ? null : this[table].find(record => sameId(record.id, input.id));
+        if (current?._invalidItems?.length || current?._invalidHistory?.length) throw new Error('Este registro tem itens ou histórico inválidos. O conteúdo original está preservado; revise-o antes de alterar o registro.');
         const item = validate(table, copy(input)), row = { ...toRow(table, item), couple_id: couple };
         return this._serialized(`${table}:${create ? 'new' : item.id}`, async () => {
             let query;
@@ -173,7 +208,9 @@ export const store = {
                 if (item.nook_version != null) query = query.eq('nook_version', item.nook_version);
             }
             const response = await query.select().single();
-            if (!create && response.error?.code === 'PGRST116') throw new Error('Este registro mudou ou sua conta não pode alterá-lo. Recarregue para conferir antes de tentar novamente.');
+            if (!create && response.error?.code === 'PGRST116') {
+                const error = new Error('Este registro mudou ou sua conta não pode alterá-lo. Recarregue para conferir antes de tentar novamente.'); error.code = 'EDIT_CONFLICT'; throw error;
+            }
             const saved = unwrap(response);
             if (saved?.id == null) throw new Error('O banco não retornou o registro salvo. Verifique permissões e geração de ID.');
             const record = fromRow(table, saved);

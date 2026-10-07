@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nook-v1.04';
+const CACHE_NAME = 'nook-v1.06';
 const PREFIX = 'nook-';
 const LOCAL_ASSETS = [ './', './index.html', './style.css', './manifest.json', './js/app.js', './js/store.js', './js/rules.js', './js/utils.js', './js/modules/navigation.js', './js/modules/onboarding.js', './js/modules/home.js', './js/modules/lists.js', './js/modules/agenda.js', './js/modules/goals.js', './js/modules/finances.js', './js/modules/settings.js', './img/icon-192.png', './img/icon-512.png', './img/icon.svg' ];
 const OPTIONAL_ASSETS = [

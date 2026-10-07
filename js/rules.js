@@ -43,36 +43,84 @@ export const financeShare = finances => {
     const p2 = numberValue(finances.incomeVO, 'Renda da segunda pessoa', { empty: true });
     return p1 + p2 === 0 ? 0.5 : p1 / (p1 + p2);
 };
-export const financialSummary = (expenses, finances, month) => {
-    const categories = { moradia: 0, mercado: 0, lazer: 0, transporte: 0, outros: 0 };
-    let pending = 0, total = 0, paidP1 = 0, paidP2 = 0;
+export const safeCentSum = (a, b) => {
+    const sum = a + b;
+    if (!Number.isSafeInteger(a) || !Number.isSafeInteger(b) || !Number.isSafeInteger(sum)) throw new Error('O total financeiro excede o limite de precisão suportado. Revise os valores antes de continuar.');
+    return sum;
+};
+export const expenseFacts = expense => {
+    if (!expense || !validDate(expense.date)) throw new Error('Data inválida');
+    const amount = cents(expense.amount);
+    if (amount <= 0) throw new Error('Valor inválido');
+    if (typeof expense.completed !== 'boolean') throw new Error('Situação de pagamento inválida');
+    if (!['IS', 'VO', 'Casal'].includes(expense.owner)) throw new Error('Pagador inválido');
+    return { amount, completed: expense.completed };
+};
+export const pendingSummary = expenses => {
+    let amount = 0, count = 0;
     const invalid = [];
     for (const expense of expenses || []) {
-        try {
-            if (!validDate(expense.date)) throw new Error('Data inválida');
-            const amount = cents(expense.amount);
-            if (amount <= 0) throw new Error('Valor inválido');
-            if (expense.completed && !['IS', 'VO', 'Casal'].includes(expense.owner)) throw new Error('Pagador inválido');
-            if (!expense.completed || expense.date.slice(0, 7) === month) {
-                total += amount;
-                const category = Object.hasOwn(categories, expense.category) ? expense.category : 'outros';
-                categories[category] += amount;
-                if (!expense.completed) pending += amount;
-                else if (expense.owner === 'IS') paidP1 += amount;
-                else if (expense.owner === 'VO') paidP2 += amount;
+        let facts;
+        try { facts = expenseFacts(expense); } catch { invalid.push(expense?.id); continue; }
+        if (!facts.completed) { amount = safeCentSum(amount, facts.amount); count++; }
+    }
+    return { amount, count, invalid };
+};
+export const financialSummary = (expenses, finances, month) => {
+    const categories = { moradia: 0, mercado: 0, lazer: 0, transporte: 0, outros: 0 };
+    const pendingData = pendingSummary(expenses);
+    let total = 0, paidP1 = 0, paidP2 = 0;
+    for (const expense of expenses || []) {
+        let facts;
+        try { facts = expenseFacts(expense); } catch { continue; }
+        const { amount, completed } = facts;
+        if (!completed || expense.date.slice(0, 7) === month) {
+            total = safeCentSum(total, amount);
+            const category = Object.hasOwn(categories, expense.category) ? expense.category : 'outros';
+            categories[category] = safeCentSum(categories[category], amount);
+            if (completed) {
+                if (expense.owner === 'IS') paidP1 = safeCentSum(paidP1, amount);
+                else if (expense.owner === 'VO') paidP2 = safeCentSum(paidP2, amount);
                 else {
-                    // Conta marcada como Casal: metade para cada pessoa; centavo ímpar para p1.
                     const half = Math.ceil(amount / 2);
-                    paidP1 += half; paidP2 += amount - half;
+                    paidP1 = safeCentSum(paidP1, half); paidP2 = safeCentSum(paidP2, amount - half);
                 }
             }
-        } catch { invalid.push(expense.id); }
+        }
     }
     const share = financeShare(finances);
-    const paid = paidP1 + paidP2;
+    const paid = safeCentSum(paidP1, paidP2);
     const targetP1 = Math.round(paid * share);
-    return { pending, total, paidP1, paidP2, balance: paidP1 - targetP1, share, categories, invalid };
+    return { pending: pendingData.amount, pendingCount: pendingData.count, total, paidP1, paidP2, balance: paidP1 - targetP1, share, categories, invalid: pendingData.invalid };
 };
+const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+export const normalizeListItems = raw => {
+    if (!Array.isArray(raw)) return { items: [], invalid: [{ index: null, reason: 'Itens não são um array.' }] };
+    const items = [], invalid = [], ids = new Set();
+    raw.forEach((entry, index) => {
+        const idValid = plainObject(entry) && ((typeof entry.id === 'string' && entry.id.trim()) || (typeof entry.id === 'number' && Number.isSafeInteger(entry.id)));
+        const priority = entry?.priority ?? 'none';
+        if (!idValid || ids.has(String(entry.id)) || typeof entry.text !== 'string' || !entry.text.trim() || typeof entry.completed !== 'boolean' || !['IS','VO','Casal'].includes(entry.owner) || !['none','urgent','casual'].includes(priority)) {
+            invalid.push({ index, reason: 'Item incompleto, inválido ou com ID repetido.' }); return;
+        }
+        ids.add(String(entry.id)); items.push({ ...entry, priority });
+    });
+    return { items, invalid };
+};
+export const normalizeGoalHistory = raw => {
+    if (!Array.isArray(raw)) return { history: [], invalid: [{ index: null, reason: 'Histórico não é um array.' }] };
+    const history = [], invalid = [];
+    raw.forEach((entry, index) => {
+        try {
+            if (!plainObject(entry) || !validDate(entry.date) || typeof entry.owner !== 'string' || !entry.owner.trim() || (entry.personId != null && !['p1','p2'].includes(entry.personId))) throw new Error('Registro incompleto.');
+            const amount = numberValue(entry.amount, 'Valor do histórico');
+            if (amount <= 0) throw new Error('Valor inválido.');
+            history.push({ ...entry, amount });
+        } catch { invalid.push({ index, reason: 'Registro do histórico incompleto ou inválido.' }); }
+    });
+    return { history, invalid };
+};
+export const listDisplayName = list => typeof list?.name === 'string' && list.name.trim() ? list.name : 'Lista sem nome';
 export const goalProgress = goal => {
     const target = numberValue(goal.target, 'Alvo', { min: 0.01 });
     const current = numberValue(goal.current, 'Saldo');

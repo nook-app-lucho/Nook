@@ -305,6 +305,7 @@
                     <h1 id="active-list-header-title">Atividades</h1>
                      <button class="btn-icon" id="btn-list-options"><i class="ph ph-dots-three-circle"></i></button>
                 </div>
+                <p id="lists-data-warning" class="empty-state d-none" role="alert"></p>
             </section>
             
             <section class="metrics">
@@ -563,6 +564,7 @@
                 <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
             </div>
             <form id="form-edit-task" class="sheet-body">
+                <p id="task-edit-warning" class="empty-state d-none" role="alert"></p>
                 <input type="hidden" id="edit-task-id">
                 <div class="form-group">
                     <label for="edit-task-text">O que precisa ser feito?</label>
@@ -588,6 +590,7 @@
                 <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
             </div>
             <form id="form-add-expense" class="sheet-body">
+                <p id="expense-edit-warning" class="empty-state d-none" role="alert"></p>
                 <input type="hidden" id="expense-id">
                 <div class="form-group"><label for="expense-title">Descrição da Conta</label><input type="text" id="expense-title" class="form-control" placeholder="Ex: Luz, Ifood" required></div>
                 <div class="form-row">
@@ -764,6 +767,7 @@
                 <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
             </div>
             <form id="form-add-memory" class="sheet-body">
+                <p id="memory-edit-warning" class="empty-state d-none" role="alert"></p>
                 <div class="form-group">
                     <label for="memory-title">Título do Momento</label>
                     <input type="text" id="memory-title" class="form-control" placeholder="Ex: Viagem inesquecível pra serra" required>

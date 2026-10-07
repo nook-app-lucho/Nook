@@ -1,7 +1,7 @@
 import { store, supabase } from '../store.js';
-import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency, runAction, safeImageUrl, imageBackground, validateImageFile } from '../utils.js';
+import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency, runAction, safeImageUrl, imageBackground, validateImageFile, initModalController, editWarning, saveFormEdit } from '../utils.js';
 
-import { daysTogether, sameId, validDate } from '../rules.js';
+import { daysTogether, sameId, validDate, pendingSummary } from '../rules.js';
 
 const MOODS = [
     { id: 'energia', icon: '⚡', label: 'Cheio(a) de energia' },
@@ -22,6 +22,7 @@ const PRESET_COVERS = [
 let targetPerson = 'p1';
 let memoryPhotoUrl = null;
 let memoryUploadPending = false;
+let memoryEditContext = null;
 let editingMemoryId = null; // Variável para controlar a edição
 
 const getFirstName = (fullName, fallback = '') => {
@@ -85,7 +86,7 @@ export const renderHome = () => {
                 textEl.className = 'mood-text active'; 
             }
         } else {
-            if (iconEl) iconEl.textContent = '😶';
+            if (iconEl) iconEl.textContent = '☁️';
             if (textEl) {
                 textEl.textContent = 'Como está?';
                 textEl.className = 'mood-text';
@@ -101,15 +102,19 @@ export const renderHome = () => {
     
     const tasksDescEl = document.getElementById('home-tasks-desc');
     if (tasksDescEl) {
-        const pendingCount = (store.lists || []).reduce((acc, list) => acc + (list.items || []).filter(i => !i.completed).length, 0);
+        const pendingCount = (store.lists || []).reduce((acc, list) => acc + (list.items || []).filter(i => i && !i.completed).length, 0);
+        const invalidCount = store.lists.reduce((sum, list) => sum + (list._invalidItems?.length || 0), 0);
         tasksDescEl.textContent = pendingCount === 0 ? "Tudo em dia!" : `${pendingCount} item(s) pendente(s)`;
+        if (invalidCount) tasksDescEl.textContent += ` — ${invalidCount} item(ns) inválido(s). Revise em Listas.`;
     }
     
     const finDescEl = document.getElementById('home-fin-desc');
     if (finDescEl) {
-        const pendingExpenses = (store.expenses || []).filter(e => !e.completed);
-        const totalPendingAmount = pendingExpenses.reduce((acc, exp) => acc + (parseFloat(exp.amount) || 0), 0);
-        finDescEl.textContent = pendingExpenses.length === 0 ? "Tudo pago!" : `${formatCurrency(totalPendingAmount)} (${pendingExpenses.length} pendente${pendingExpenses.length > 1 ? 's' : ''})`;
+        try {
+            const summary = pendingSummary(store.expenses);
+            finDescEl.textContent = summary.count === 0 ? 'Tudo pago!' : `${formatCurrency(summary.amount / 100)} (${summary.count} pendente${summary.count > 1 ? 's' : ''})`;
+            if (summary.invalid.length) finDescEl.textContent += ` — ${summary.invalid.length} conta(s) inválida(s) excluída(s). Revise em Finanças.`;
+        } catch (error) { finDescEl.textContent = error.message; }
     }
     
     const agendaList = document.getElementById('home-agenda-list');
@@ -200,17 +205,20 @@ const renderMemoriesSection = () => {
                 triggerHaptic(10);
                 
                 if (memoryUploadPending) { alert('Aguarde o envio da foto terminar.'); return; }
-                editingMemoryId = mem.id;
+                memoryEditContext = store.captureEdit('memories', mem.id);
+                const opened = memoryEditContext.record;
+                editWarning('memory-edit-warning');
+                editingMemoryId = opened.id;
                 memoryPhotoUrl = null;
                 document.getElementById('file-memory-photo').value = ''; 
                 
-                document.getElementById('memory-title').value = mem.title || '';
-                document.getElementById('memory-date').value = mem.date || '';
-                document.getElementById('memory-note').value = mem.note || '';
+                document.getElementById('memory-title').value = opened.title || '';
+                document.getElementById('memory-date').value = opened.date || '';
+                document.getElementById('memory-note').value = opened.note || '';
                 
                 const prev = document.getElementById('memory-photo-preview');
-                if (mem.photo) {
-                    prev.style.backgroundImage = imageBackground(mem.photo);
+                if (opened.photo) {
+                    prev.style.backgroundImage = imageBackground(opened.photo);
                     prev.classList.remove('d-none');
                 } else {
                     prev.style.backgroundImage = 'none';
@@ -300,8 +308,7 @@ export const initHome = () => {
     document.getElementById('home-tasks-card')?.addEventListener('click', () => { triggerHaptic(10); document.querySelector('.nav-item[data-target="view-lists"]')?.click(); });
     document.getElementById('home-fin-card')?.addEventListener('click', () => { triggerHaptic(10); document.querySelector('.nav-item[data-target="view-finances"]')?.click(); });
     
-    document.getElementById('general-overlay')?.addEventListener('click', () => closeAllModals(false));
-    document.querySelectorAll('.btn-close-modal').forEach(btn => btn.addEventListener('click', () => closeAllModals(false)));
+    initModalController();
     
     document.getElementById('btn-edit-hero')?.addEventListener('click', () => {
         const grid = document.getElementById('hero-gallery-grid');
@@ -362,6 +369,7 @@ export const initHome = () => {
     
     document.getElementById('btn-open-memory-modal')?.addEventListener('click', () => {
         if (memoryUploadPending) { alert('Aguarde o envio da foto terminar.'); return; }
+        memoryEditContext = null; editWarning('memory-edit-warning');
         editingMemoryId = null; // Garante modo de criação novo
         document.getElementById('form-add-memory')?.reset();
         const prev = document.getElementById('memory-photo-preview');
@@ -399,10 +407,10 @@ export const initHome = () => {
         e.preventDefault(); const form = e.currentTarget;
         await runAction(form, async () => {
             if (memoryUploadPending) throw new Error('Aguarde o envio da foto.');
-            const existing = editingMemoryId != null ? store.memories.find(item => sameId(item.id, editingMemoryId)) : null;
+            const existing = editingMemoryId != null ? memoryEditContext?.record : null;
             if (editingMemoryId != null && !existing) throw new Error('Esta memória mudou. Recarregue.');
             const data = { ...(existing || {}), title: document.getElementById('memory-title').value.trim(), date: document.getElementById('memory-date').value, note: document.getElementById('memory-note').value.trim(), photo: memoryPhotoUrl || existing?.photo || null };
-            const saved = await store.saveRecord('memories', data, { create: editingMemoryId == null });
+            const saved = editingMemoryId != null ? await saveFormEdit(memoryEditContext, data, 'memory-edit-warning') : await store.saveRecord('memories', data, { create: true });
             editingMemoryId = saved.id; memoryPhotoUrl = null;
             triggerHaptic(30); renderHome(); closeAllModals(true);
         });

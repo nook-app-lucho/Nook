@@ -62,42 +62,44 @@ export const validateImageFile = file => {
     return file;
 };
 
-export const hasUnsavedChanges = () => {
-    const activeBottomSheet = document.querySelector('.bottom-sheet.active');
-    if (!activeBottomSheet) return false;
-    
-    const inputs = activeBottomSheet.querySelectorAll('input:not([type="hidden"]), select, textarea');
-    for (const input of inputs) {
-        const currentVal = input.type === 'checkbox' ? String(input.checked) : input.value;
-        const originalVal = input.dataset.originalValue || (input.type === 'checkbox' ? 'false' : '');
-        
-        if (currentVal !== originalVal) return true;
-    }
-    return false;
+const activeSheets = () => [...document.querySelectorAll('.bottom-sheet')].filter(sheet => sheet.classList.contains('active'));
+const dirtySheet = sheet => [...sheet.querySelectorAll('input:not([type="hidden"]), select, textarea')].some(input => (input.type === 'checkbox' ? String(input.checked) : input.value) !== (input.dataset.originalValue ?? (input.type === 'checkbox' ? 'false' : '')));
+export const hasUnsavedChanges = () => activeSheets().some(dirtySheet);
+const mayClose = (sheets, force) => {
+    if (force === true) return true;
+    if (document.querySelector('[data-saving="true"]')) { showToast('Aguarde a gravação terminar.'); return false; }
+    return !sheets.some(dirtySheet) || window.confirm('Você tem alterações não salvas. Deseja descartar os dados?');
 };
-
-export const openModal = (modalId) => {
-    triggerHaptic(10);
+const syncOverlay = () => document.getElementById('general-overlay')?.classList.toggle('active', activeSheets().length > 0);
+export const openModal = modalId => {
     const modal = document.getElementById(modalId);
-    if (modal) {
-        // Tira uma "fotografia" do estado de cada campo na abertura do modal
-        const inputs = modal.querySelectorAll('input:not([type="hidden"]), select, textarea');
-        inputs.forEach(input => {
-            input.dataset.originalValue = input.type === 'checkbox' ? String(input.checked) : input.value;
-        });
-    }
-    document.getElementById('general-overlay')?.classList.add('active');
-    modal?.classList.add('active');
+    if (!modal) return;
+    initModalController(); triggerHaptic(10);
+    modal.querySelectorAll('input:not([type="hidden"]), select, textarea').forEach(input => { input.dataset.originalValue = input.type === 'checkbox' ? String(input.checked) : input.value; });
+    modal.classList.add('active'); syncOverlay();
 };
-
+export const closeModal = (modalId, force = false) => {
+    const modal = document.getElementById(modalId);
+    if (!modal || !modal.classList.contains('active')) return true;
+    if (!mayClose([modal], force)) return false;
+    modal.classList.remove('active'); syncOverlay(); return true;
+};
 export const closeAllModals = (force = false) => {
-    if (force !== true && document.querySelector('[data-saving="true"]')) { showToast('Aguarde a gravação terminar.'); return; }
-    if (force !== true && hasUnsavedChanges()) {
-        const confirmar = window.confirm("Você tem alterações não salvas. Deseja descartar os dados?");
-        if (!confirmar) return;
+    const sheets = activeSheets();
+    if (!mayClose(sheets, force)) return false;
+    sheets.forEach(sheet => sheet.classList.remove('active')); syncOverlay(); return true;
+};
+export const initModalController = () => {
+    const overlay = document.getElementById('general-overlay');
+    if (overlay && !overlay.dataset.modalController) {
+        overlay.dataset.modalController = 'true'; overlay.addEventListener('click', () => closeAllModals());
+        document.addEventListener('keydown', event => { if (event.key === 'Escape' && activeSheets().length) closeAllModals(); });
     }
-    document.getElementById('general-overlay')?.classList.remove('active');
-    document.querySelectorAll('.bottom-sheet').forEach(sheet => sheet.classList.remove('active'));
+    document.querySelectorAll('.btn-close-modal').forEach(button => {
+        if (button.dataset.modalController) return;
+        button.dataset.modalController = 'true';
+        button.addEventListener('click', () => { const sheet = button.closest('.bottom-sheet'); if (sheet) closeModal(sheet.id); });
+    });
 };
 
 export const enableDesktopScroll = (container) => {
@@ -144,4 +146,14 @@ export const showToast = (message, icon = 'ph-check-circle') => {
     setTimeout(() => {
         toast.classList.remove('show');
     }, 3000);
+};
+export const editWarning = (id, error = null) => {
+    const node = document.getElementById(id);
+    if (!node) return;
+    node.textContent = error?.code === 'EDIT_CONFLICT' ? error.message : '';
+    node.classList.toggle('d-none', !node.textContent);
+};
+export const saveFormEdit = async (context, patch, warningId) => {
+    try { return await store.saveEdit(context, patch); }
+    catch (error) { editWarning(warningId, error); throw error; }
 };
