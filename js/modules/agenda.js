@@ -1,10 +1,39 @@
 import { store } from '../store.js';
 import { triggerHaptic, getLocalDateString, getInitials, escapeHTML, openModal, closeAllModals, enableDesktopScroll, runAction } from '../utils.js';
-
 import { validDate } from '../rules.js';
 
 let selectedDateStr = getLocalDateString(new Date());
 let currentAgendaView = 'week';
+
+export const applyAgendaDateFilter = () => {
+    const selectedListEl = document.getElementById('agenda-selected-list');
+    if (!selectedListEl) return;
+    
+    const [y, m, d] = selectedDateStr.split('-');
+    const todayStr = getLocalDateString(new Date());
+    document.getElementById('agenda-selected-title').textContent = selectedDateStr === todayStr ? `HOJE - ${d}/${m}/${y}` : `DIA SELECIONADO - ${d}/${m}/${y}`;
+    
+    let visibleCount = 0;
+    selectedListEl.querySelectorAll('.task-item').forEach(li => {
+        const match = li.dataset.date === selectedDateStr;
+        li.classList.toggle('d-none', !match);
+        if (match) visibleCount++;
+    });
+
+    let emptyState = document.getElementById('empty-agenda-msg');
+    if (visibleCount === 0) {
+        if (!emptyState) {
+            emptyState = document.createElement('li');
+            emptyState.id = 'empty-agenda-msg';
+            emptyState.className = 'empty-state empty-state-no-border';
+            selectedListEl.appendChild(emptyState);
+        }
+        emptyState.textContent = 'Dia livre!';
+        emptyState.classList.remove('d-none');
+    } else if (emptyState) {
+        emptyState.classList.add('d-none');
+    }
+};
 
 export const renderDateScroller = () => {
     const scrollerEl = document.getElementById('agenda-date-scroller');
@@ -33,50 +62,44 @@ export const renderDateScroller = () => {
             bubble.addEventListener('click', (e) => {
                 triggerHaptic(10);
                 selectedDateStr = dateStr;
-                
                 document.querySelectorAll('.date-bubble').forEach(b => b.classList.remove('active'));
                 e.currentTarget.classList.add('active');
                 
-                renderAgendaView();
+                // OTIMIZAÇÃO: Apenas esconde e mostra as li's usando a classe d-none em vez de remontar tudo
+                applyAgendaDateFilter(); 
                 e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
             });
             scrollerEl.appendChild(bubble);
         }
         enableDesktopScroll(scrollerEl);
     } else {
-        // Visão Mensal
         scrollerEl.classList.add('d-none');
         monthGridEl.classList.remove('d-none');
         monthGridEl.innerHTML = '';
-
         const diasSemana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
         diasSemana.forEach(d => {
             monthGridEl.insertAdjacentHTML('beforeend', `<div class="month-header-day">${d}</div>`);
         });
-
         const [y, m] = selectedDateStr.split('-').map(Number);
         const firstDay = new Date(y, m - 1, 1).getDay();
         const daysInMonth = new Date(y, m, 0).getDate();
-
-        // Células vazias do início do mês
+        
         for (let i = 0; i < firstDay; i++) {
             monthGridEl.insertAdjacentHTML('beforeend', `<div class="month-day empty"></div>`);
         }
-
         for (let i = 1; i <= daysInMonth; i++) {
             const tempDate = new Date(y, m - 1, i);
             const dateStr = getLocalDateString(tempDate);
             const hasEvent = store.agenda.some(ev => ev.date === dateStr);
-
             const dayDiv = document.createElement('div');
             dayDiv.className = `month-day ${dateStr === selectedDateStr ? 'active' : ''} ${hasEvent ? 'has-events' : ''}`;
             dayDiv.innerHTML = `${i}<div class="event-dot"></div>`;
-
             dayDiv.addEventListener('click', () => {
                 triggerHaptic(10);
                 selectedDateStr = dateStr;
                 renderDateScroller(); 
-                renderAgendaView();
+                // OTIMIZAÇÃO AQUI TAMBÉM
+                applyAgendaDateFilter(); 
             });
             monthGridEl.appendChild(dayDiv);
         }
@@ -91,9 +114,7 @@ export const renderAgendaView = () => {
     selectedListEl.innerHTML = '';
     allListEl.innerHTML = '';
     
-    const [y, m, d] = selectedDateStr.split('-');
     const todayStr = getLocalDateString(new Date());
-    document.getElementById('agenda-selected-title').textContent = selectedDateStr === todayStr ? `HOJE - ${d}/${m}/${y}` : `DIA SELECIONADO - ${d}/${m}/${y}`;
     
     const p1Init = store.profile ? getInitials(store.profile.p1) : 'IS';
     const p2Init = store.profile ? getInitials(store.profile.p2) : 'VO';
@@ -111,7 +132,6 @@ export const renderAgendaView = () => {
         const [, em, ed] = validDate(ev.date) ? ev.date.split('-') : ['', '?', '?'];
         const dateTag = showBadge ? `<span class="agenda-date-badge">${ed}/${em}</span>` : '';
         
-        // Lógica de RSVP para o Casal
         let rsvpSection = '';
         if (ev.owner === 'Casal') {
             const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
@@ -134,31 +154,34 @@ export const renderAgendaView = () => {
             <button class="btn-delete-event"><i class="ph ph-trash"></i></button>
         `;
         
-        // Listener para confirmar ciente (RSVP)
         const rsvpBtn = li.querySelector('.btn-rsvp');
         if (rsvpBtn) {
             rsvpBtn.addEventListener('click', async () => { await runAction(li, async () => { await store.saveRecord('agenda', { ...ev, confirmed: true }); triggerHaptic(15); renderAgendaView(); }); });
         }
-
         li.querySelector('.btn-delete-event').addEventListener('click', async () => {
             if (!confirm('Excluir este compromisso?')) return;
             await runAction(li, async () => { await store.deleteRecord('agenda', ev.id); renderDateScroller(); renderAgendaView(); });
         });
-
         return li;
     };
-
-    const selectedEvents = store.agenda.filter(ev => ev.date === selectedDateStr).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
-    if (selectedEvents.length === 0) selectedListEl.innerHTML = `<li class="empty-state">Dia livre!</li>`;
-    else selectedEvents.forEach(ev => selectedListEl.appendChild(createEl(ev, false)));
+    
+    // Alocamos TODOS os eventos na lista principal, mas ocultos
+    const allEvents = [...store.agenda].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+    allEvents.forEach(ev => {
+        const li = createEl(ev, false);
+        li.dataset.date = ev.date;
+        selectedListEl.appendChild(li);
+    });
 
     const futureEvents = store.agenda.filter(ev => ev.date >= todayStr).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')));
     if (futureEvents.length === 0) allListEl.innerHTML = `<li class="empty-state">Nenhum compromisso agendado para o futuro.</li>`;
     else futureEvents.forEach(ev => allListEl.appendChild(createEl(ev, true)));
+
+    // Filtramos para a data correta logo na primeira renderização
+    applyAgendaDateFilter();
 };
 
 export const initAgenda = () => {
-    // Toggles de visualização
     document.getElementById('btn-view-week')?.addEventListener('click', (e) => {
         currentAgendaView = 'week';
         e.target.classList.add('active');
@@ -184,7 +207,7 @@ export const initAgenda = () => {
             if (selectedDate) {
                 selectedDateStr = selectedDate;
                 renderDateScroller();
-                renderAgendaView();
+                applyAgendaDateFilter();
                 triggerHaptic(15);
             }
         });
@@ -194,7 +217,7 @@ export const initAgenda = () => {
         triggerHaptic(10);
         selectedDateStr = getLocalDateString(new Date()); 
         renderDateScroller(); 
-        renderAgendaView(); 
+        applyAgendaDateFilter(); 
     });
 
     const form = document.getElementById('form-add-event');

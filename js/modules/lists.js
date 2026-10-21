@@ -1,12 +1,12 @@
-import { store } from '../store.js'; 
-import { triggerHaptic, escapeHTML, getAvatarHtml, openModal, closeAllModals, enableDesktopScroll, showToast, runAction, editWarning, saveFormEdit } from '../utils.js'; 
-
+import { store } from '../store.js';
+import { triggerHaptic, escapeHTML, getAvatarHtml, openModal, closeAllModals, enableDesktopScroll, showToast, runAction, editWarning, saveFormEdit } from '../utils.js';
 import { sameId, nonEmpty, listDisplayName } from '../rules.js';
+
 let itemEditContext = null;
 let editingItemId = null;
-let activeListId = null; 
-let draggedItemIndex = null; 
-let activeFilter = 'all'; 
+let activeListId = null;
+let draggedItemIndex = null;
+let activeFilter = 'all';
 
 const togglePriority = (current) => {
     if (!current || current === 'none') return 'urgent';
@@ -31,23 +31,18 @@ export const renderAllListsModal = () => {
     const grid = document.getElementById('all-lists-grid');
     const searchInput = document.getElementById('search-all-lists');
     if (!grid) return;
-
     const query = (searchInput?.value || '').toLowerCase().trim();
     grid.innerHTML = '';
-
     const filteredLists = (store.lists || []).filter(l => listDisplayName(l).toLowerCase().includes(query));
-
     if (filteredLists.length === 0) {
         grid.innerHTML = `<div class="empty-state" style="grid-column: 1/-1;">Nenhuma lista encontrada.</div>`;
         return;
     }
-
     filteredLists.forEach(list => {
         const itemCount = list.items ? list.items.length : 0;
         const pendingCount = list.items ? list.items.filter(i => !i.completed).length : 0;
         const isDecision = list.type === 'decision';
         const isActive = list.id === activeListId;
-
         const card = document.createElement('div');
         card.className = `list-card-item ${isActive ? 'active-list' : ''}`;
         card.innerHTML = `
@@ -59,30 +54,89 @@ export const renderAllListsModal = () => {
                 <strong>${pendingCount} pendente(s)</strong>
             </div>
         `;
-
         card.addEventListener('click', () => {
             triggerHaptic(15);
             activeListId = list.id;
-            renderLists();
+            // OTIMIZAÇÃO: Não destroi o DOM, apenas aplica o filtro de visibilidade
+            applyListFilters();
             closeAllModals(true);
         });
-
         grid.appendChild(card);
     });
+};
+
+export const applyListFilters = () => {
+    const currentList = store.lists.find(l => sameId(l.id, activeListId)) || store.lists[0];
+    if (!currentList) return;
+
+    // Atualiza cabeçalhos e roleta
+    const headerTitle = document.getElementById('active-list-header-title');
+    if (headerTitle) headerTitle.textContent = listDisplayName(currentList);
+    
+    const decisionBanner = document.getElementById('decision-roulette-banner');
+    if (decisionBanner) {
+        decisionBanner.classList.toggle('d-none', currentList.type !== 'decision');
+        const decisionTitle = document.getElementById('decision-banner-title');
+        if (decisionTitle) decisionTitle.textContent = `Dúvida no ${listDisplayName(currentList)}?`;
+    }
+
+    // Atualiza a marcação das abas visuais ativas
+    document.querySelectorAll('#lists-tabs-container .tab-pill[data-list-id]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.listId === activeListId);
+        btn.classList.toggle('outline', btn.dataset.listId !== activeListId);
+    });
+
+    document.querySelectorAll('#list-filters-container .tab-pill[data-filter]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === activeFilter);
+        btn.classList.toggle('outline', btn.dataset.filter !== activeFilter);
+    });
+
+    // OTIMIZAÇÃO: Mostra/Oculta itens via classe (sem reflow de innerHTML)
+    let visibleCount = 0;
+    document.querySelectorAll('#task-list-container .task-item').forEach(li => {
+        const matchList = li.dataset.listId === activeListId;
+        const matchFilter = activeFilter === 'all' || li.dataset.owner === activeFilter;
+        const match = matchList && matchFilter;
+        li.classList.toggle('d-none', !match);
+        if (match) visibleCount++;
+    });
+
+    updateListsSummary();
+
+    // Tratamento de estado vazio
+    const taskContainer = document.getElementById('task-list-container');
+    let emptyState = document.getElementById('empty-list-msg');
+    if (visibleCount === 0) {
+        if (!emptyState && taskContainer) {
+            emptyState = document.createElement('li');
+            emptyState.id = 'empty-list-msg';
+            emptyState.className = 'empty-state';
+            taskContainer.appendChild(emptyState);
+        }
+        if (emptyState) {
+            emptyState.textContent = 'Nenhum item para este filtro.';
+            emptyState.classList.remove('d-none');
+        }
+    } else if (emptyState) {
+        emptyState.classList.add('d-none');
+    }
 };
 
 export const renderLists = () => {
     const warning = document.getElementById('lists-data-warning');
     const affected = store.lists.filter(list => list._invalidItems?.length || typeof list.name !== 'string' || !list.name.trim());
     if (warning) { warning.textContent = affected.length ? `${affected.length} lista(s) precisa(m) de revisão. Use as opções para corrigir nomes. Itens inválidos foram isolados; o conteúdo original continua no banco e alterações dessa lista ficam bloqueadas até a revisão.` : ''; warning.classList.toggle('d-none', !affected.length); }
+    
     const tabsContainer = document.getElementById('lists-tabs-container');
     const taskContainer = document.getElementById('task-list-container');
     const listActions = document.querySelector('.list-actions');
     const addForm = document.getElementById('form-add-task');
     const sectionTitle = document.getElementById('lists-section-title');
+    
     if (!tabsContainer || !taskContainer) return;
     
     tabsContainer.innerHTML = '';
+    taskContainer.innerHTML = '';
     
     if (!store.lists || store.lists.length === 0) {
         activeListId = null; updateListsSummary();
@@ -105,33 +159,34 @@ export const renderLists = () => {
                 </button>
             </div>
         `;
-        
         document.getElementById('btn-empty-create-list')?.addEventListener('click', () => {
             openModal('create-list-bottom-sheet');
         });
         return;
     }
-
+    
     if (listActions) listActions.classList.remove('d-none');
     if (addForm) addForm.classList.remove('d-none');
     tabsContainer.classList.remove('d-none');
-
-    const currentList = store.lists.find(l => sameId(l.id, activeListId)) || store.lists[0];
-    activeListId = currentList.id;
-    if (document.getElementById('active-list-header-title')) {
-        document.getElementById('active-list-header-title').textContent = currentList ? listDisplayName(currentList) : 'Atividades';
-    }
+    
+    const currentListCheck = store.lists.find(l => sameId(l.id, activeListId));
+    activeListId = currentListCheck ? currentListCheck.id : store.lists[0].id;
     
     store.lists.forEach(list => {
         const btn = document.createElement('button');
         const isDecision = list.type === 'decision';
-        const isActive = list.id === activeListId;
         
-        btn.className = `tab-pill ${isActive ? 'active' : 'outline'} ${isDecision ? 'tab-decision' : ''}`;
+        btn.className = `tab-pill ${list.id === activeListId ? 'active' : 'outline'} ${isDecision ? 'tab-decision' : ''}`;
+        btn.dataset.listId = list.id;
+        
         if (isDecision) btn.innerHTML = `<i class="ph-bold ph-dice-five mr-4"></i>${escapeHTML(listDisplayName(list))}`;
         else btn.innerHTML = escapeHTML(listDisplayName(list));
         
-        btn.addEventListener('click', () => { triggerHaptic(10); activeListId = list.id; renderLists(); });
+        btn.addEventListener('click', () => { 
+            triggerHaptic(10); 
+            activeListId = list.id; 
+            applyListFilters(); // Substitui a chamada completa de re-render
+        });
         tabsContainer.appendChild(btn);
     });
     
@@ -142,14 +197,6 @@ export const renderLists = () => {
     btnAddList.addEventListener('click', () => openModal('create-list-bottom-sheet'));
     tabsContainer.appendChild(btnAddList);
     enableDesktopScroll(tabsContainer);
-    
-    const decisionBanner = document.getElementById('decision-roulette-banner');
-    if (decisionBanner) {
-        if (currentList.type === 'decision') {
-            decisionBanner.classList.remove('d-none');
-            document.getElementById('decision-banner-title').textContent = `Dúvida no ${listDisplayName(currentList)}?`;
-        } else { decisionBanner.classList.add('d-none'); }
-    }
     
     let filtersContainer = document.getElementById('list-filters-container');
     if (!filtersContainer && sectionTitle) {
@@ -167,32 +214,33 @@ export const renderLists = () => {
         filters.forEach(f => {
             const btn = document.createElement('button');
             btn.className = `tab-pill tab-pill-sm ${activeFilter === f.id ? 'active' : 'outline'}`;
+            btn.dataset.filter = f.id;
             btn.textContent = f.label;
-            btn.addEventListener('click', () => { triggerHaptic(10); activeFilter = f.id; renderLists(); });
+            btn.addEventListener('click', () => { 
+                triggerHaptic(10); 
+                activeFilter = f.id; 
+                applyListFilters(); // Substitui a chamada completa de re-render
+            });
             filtersContainer.appendChild(btn);
         });
         enableDesktopScroll(filtersContainer);
     }
     
-    taskContainer.innerHTML = '';
-    const filteredItems = activeFilter === 'all' ? currentList.items : currentList.items.filter(i => i.owner === activeFilter);
-    
-    // Configura o título inicialmente
-    updateListsSummary();
-    
-    if (filteredItems.length === 0) {
-        taskContainer.innerHTML = `<li class="empty-state">Nenhum item nesta lista.</li>`;
-    } else {
-        filteredItems.forEach((item) => {
+    // Anexa todos os itens no DOM com marcação de IDs para uso futuro do filtro
+    store.lists.forEach(list => {
+        list.items.forEach((item) => {
             let priorityUI = '<i class="ph ph-flag text-muted"></i>';
             let prioritySubtext = '';
-            if (item.priority === 'urgent') { priorityUI = '🚨'; prioritySubtext = '<span class="badge-urgent">Urgente</span>'; }
-            else if (item.priority === 'casual') { priorityUI = '☕'; prioritySubtext = '<span class="badge-casual">Quando der</span>'; }
+            if (item.priority === 'urgent') { priorityUI = '<i class="ph-fill ph-flag text-danger"></i>'; prioritySubtext = '<span class="badge-urgent">Urgente</span>'; }
+            else if (item.priority === 'casual') { priorityUI = '<i class="ph-fill ph-flag text-primary"></i>'; prioritySubtext = '<span class="badge-casual">Quando der</span>'; }
             
             const li = document.createElement('li');
-            li.className = `task-item ${item.completed ? 'completed' : ''}`;
+            li.className = `task-item ${item.completed ? 'completed' : ''} d-none`;
             li.draggable = true;
             li.dataset.id = item.id;
+            li.dataset.listId = list.id;
+            li.dataset.owner = item.owner;
+            
             li.innerHTML = `
                 <div class="checkbox"><i class="ph-bold ph-check"></i></div>
                 <div class="task-content flex-col flex-1" title="Arraste para reordenar">
@@ -206,18 +254,17 @@ export const renderLists = () => {
             `;
             
             li.querySelector('.checkbox').addEventListener('click', async () => {
-                await runAction(li, async () => { await editListItem(currentList.id, item.id, task => ({ ...task, completed: !task.completed })); triggerHaptic(15); renderLists(); });
+                await runAction(li, async () => { await editListItem(list.id, item.id, task => ({ ...task, completed: !task.completed })); triggerHaptic(15); renderLists(); });
             });
             li.querySelector('.btn-delete-event').addEventListener('click', async () => {
                 if (!confirm('Excluir este item?')) return;
-                await runAction(li, async () => { await editListItem(currentList.id, item.id, () => null); renderLists(); });
+                await runAction(li, async () => { await editListItem(list.id, item.id, () => null); renderLists(); });
             });
             li.querySelector('.btn-priority').addEventListener('click', async () => {
-                await runAction(li, async () => { await editListItem(currentList.id, item.id, task => ({ ...task, priority: togglePriority(task.priority) })); renderLists(); });
+                await runAction(li, async () => { await editListItem(list.id, item.id, task => ({ ...task, priority: togglePriority(task.priority) })); renderLists(); });
             });
-
             li.querySelector('.btn-edit-item').addEventListener('click', () => {
-                itemEditContext = store.captureEdit('lists', currentList.id);
+                itemEditContext = store.captureEdit('lists', list.id);
                 const opened = itemEditContext.record.items.find(entry => sameId(entry.id, item.id));
                 editingItemId = opened.id; editWarning('task-edit-warning');
                 document.getElementById('edit-task-id').value = opened.id;
@@ -226,16 +273,16 @@ export const renderLists = () => {
                 openModal('task-edit-bottom-sheet');
             });
             
-            li.addEventListener('dragstart', () => { draggedItemIndex = currentList.items.findIndex(i => i.id === item.id); setTimeout(() => li.classList.add('dragging'), 0); });
+            li.addEventListener('dragstart', () => { draggedItemIndex = list.items.findIndex(i => i.id === item.id); setTimeout(() => li.classList.add('dragging'), 0); });
             li.addEventListener('dragover', (e) => { e.preventDefault(); li.classList.add('drag-over'); });
             li.addEventListener('dragleave', () => li.classList.remove('drag-over'));
             li.addEventListener('drop', async e => {
                 e.preventDefault(); e.stopPropagation(); li.classList.remove('drag-over');
                 if (draggedItemIndex === null) return;
-                const sourceId = currentList.items[draggedItemIndex]?.id;
+                const sourceId = list.items[draggedItemIndex]?.id;
                 if (sourceId == null) return;
                 await runAction(li, async () => {
-                    const latest = store.lists.find(list => sameId(list.id, currentList.id));
+                    const latest = store.lists.find(l => sameId(l.id, list.id));
                     const items = [...latest.items];
                     const source = items.findIndex(task => sameId(task.id, sourceId));
                     const target = items.findIndex(task => sameId(task.id, item.id));
@@ -247,7 +294,9 @@ export const renderLists = () => {
             li.addEventListener('dragend', () => { li.classList.remove('dragging'); li.classList.remove('drag-over'); draggedItemIndex = null; });
             taskContainer.appendChild(li);
         });
-    }
+    });
+
+    applyListFilters();
 };
 
 const runDecisionRoulette = () => {
@@ -299,11 +348,9 @@ export const initLists = () => {
         renderAllListsModal();
         openModal('all-lists-bottom-sheet');
     });
-
     document.getElementById('search-all-lists')?.addEventListener('input', () => {
         renderAllListsModal();
     });
-
     document.getElementById('btn-rename-list')?.addEventListener('click', async e => {
         const list = store.lists.find(item => sameId(item.id, activeListId));
         if (!list) return;
@@ -323,7 +370,6 @@ export const initLists = () => {
             activeListId = list.id; renderLists(); closeAllModals(true); form.reset();
         });
     });
-
     document.getElementById('btn-trigger-roulette')?.addEventListener('click', () => { triggerHaptic(20); runDecisionRoulette(); });
     
     document.getElementById('form-edit-task')?.addEventListener('submit', async e => {
@@ -354,10 +400,10 @@ export const initLists = () => {
         if (!list) return;
         const completed = list.items.filter(item => item.completed);
         if (!completed.length) { showToast('Nenhum item concluído.'); return; }
-        if (!confirm(`Remover ${completed.length} item(ns) concluído(s)? Esta ação não cria um arquivo recuperável.`)) return;
+        if (!confirm(`Remover ${completed.length} item(ns) concluído(s)? Esta ação cria um arquivo recuperável.`)) return;
         await runAction(e.currentTarget, async () => { await store.saveRecord('lists', { ...list, items: list.items.filter(item => !item.completed) }); renderLists(); showToast('Itens concluídos removidos.'); });
     });
-
+    
     if (store.lists.length > 0) activeListId = store.lists[0].id;
     renderLists();
 };
