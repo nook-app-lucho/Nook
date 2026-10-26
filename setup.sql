@@ -20,6 +20,9 @@
 --      Schema evolution after this baseline should use separate migrations.
 --   4. Current frontend is aligned with the private photo contract:
 --      <couple_id>/... paths are persisted and resolved with temporary signed URLs.
+--   5. In the current product flow, approved=false means the second member has
+--      not joined yet. nook_join() sets p2_email and approved=true atomically.
+--      It is not an administrator-approval workflow.
 -- ============================================================================
 
 begin;

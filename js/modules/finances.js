@@ -1,16 +1,23 @@
 import { store } from '../store.js'; 
-import { triggerHaptic, formatCurrency, escapeHTML, getAvatarHtml, openModal, closeAllModals, runAction, editWarning, saveFormEdit } from '../utils.js'; 
+import { triggerHaptic, formatCurrency, escapeHTML, getAvatarHtml, openModal, openConfirmSheet, closeAllModals, runAction, editWarning, saveFormEdit, showToast } from '../utils.js'; 
 
-import { localDate, sameId, financeShare, financialSummary, validateExpense, validDate } from '../rules.js';
+import { localDate, sameId, financeShare, financialSummary, validateExpense, validDate, expenseDueStatus } from '../rules.js';
 let expenseEditContext = null;
 let selectedHistoryMonth = localDate().slice(0, 7); 
 
 const CAT_INFO = {
-    'moradia': { color: '#E07A5F', label: 'Moradia' },
-    'mercado': { color: '#2A9D8F', label: 'Mercado' },
-    'lazer': { color: '#E9C46A', label: 'Lazer' },
-    'transporte': { color: '#F4A261', label: 'Transporte' },
-    'outros': { color: '#8A7A75', label: 'Outros' }
+    moradia: { label: 'Moradia' },
+    mercado: { label: 'Mercado' },
+    lazer: { label: 'Lazer' },
+    transporte: { label: 'Transporte' },
+    outros: { label: 'Outros' }
+};
+
+const selectedMonthLabel = () => {
+    const [year, month] = selectedHistoryMonth.split('-').map(Number);
+    if (!year || !month) return 'mês selecionado';
+    return new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+        .format(new Date(Date.UTC(year, month - 1, 1)));
 };
 
 const updateFinancesSummary = () => {
@@ -28,7 +35,6 @@ const updateFinancesSummary = () => {
         return;
     }
     const totalPending = summary.pending / 100, totalOverall = summary.total / 100;
-    const paidByIS = summary.paidP1 / 100, paidByVO = summary.paidP2 / 100;
     const categoryTotals = Object.fromEntries(Object.entries(summary.categories).map(([key, value]) => [key, value / 100]));
     const warning = document.getElementById('fin-data-warning');
     if (warning) { warning.textContent = summary.invalid.length ? `${summary.invalid.length} conta(s) com dados inválidos não entram nos cálculos. Edite-as para corrigir.` : ''; warning.classList.toggle('d-none', !summary.invalid.length); }
@@ -53,40 +59,62 @@ const updateFinancesSummary = () => {
                 if (amount > 0) {
                     const percent = (amount / totalOverall) * 100;
                     const info = CAT_INFO[cat];
-                    chartBar?.insertAdjacentHTML('beforeend', `<div class="chart-bar-segment" style="width: ${percent}%; background-color: ${info.color};"></div>`);
-                    chartLegend?.insertAdjacentHTML('beforeend', `<div class="chart-legend-item"><div style="width: 8px; height: 8px; border-radius: 50%; background: ${info.color};"></div><span class="text-muted">${info.label} (${Math.round(percent)}%)</span></div>`);
+                    if (chartBar) {
+                        const segment = document.createElement('div');
+                        segment.className = `chart-bar-segment category-bg-${cat}`;
+                        segment.style.setProperty('--segment-width', `${percent}%`);
+                        chartBar.appendChild(segment);
+                    }
+                    if (chartLegend) {
+                        const item = document.createElement('div');
+                        item.className = 'chart-legend-item';
+                        item.innerHTML = `<div class="category-dot category-bg-${cat}"></div><span class="text-muted">${info.label} (${Math.round(percent)}%)</span>`;
+                        chartLegend.appendChild(item);
+                    }
                 }
             });
         }
     }
 
-    // Atualiza o Bloco de Acerto de Contas
+    // Atualiza o Bloco de Acerto de Contas usando exclusivamente o mês selecionado.
     const settleCard = document.getElementById('fin-settlement-card');
+    const settleLabel = document.getElementById('fin-settlement-label');
     const settleText = document.getElementById('fin-settlement-text');
     if (settleCard && settleText) {
         const model = store.finances.model;
-        if (!store.finances.configured || model === 'single' || model === 'custom' || model === '100-p1' || model === '100-p2' || (paidByIS === 0 && paidByVO === 0)) {
+        const monthLabel = selectedMonthLabel();
+        const p1Name = store.profile?.p1 || 'P1';
+        const p2Name = store.profile?.p2 || 'P2';
+        if (settleLabel) settleLabel.textContent = `Acerto de ${monthLabel}`;
+
+        if (!store.finances.configured || model === 'single' || model === 'custom' || model === '100-p1' || model === '100-p2') {
             settleCard.classList.add('d-none');
         } else {
             settleCard.classList.remove('d-none');
-            
-            const balanceIS = summary.balance / 100;
-            const p1Name = store.profile?.p1 || 'P1';
-            const p2Name = store.profile?.p2 || 'P2';
+            settleText.className = 'dash-value settlement-value';
 
-            if (summary.balance === 0) {
-                settleText.textContent = "Tudo certo! Ninguém deve ninguém."; 
-                settleText.className = 'dash-value settlement-value';
+            if (summary.total === 0) {
+                settleText.textContent = 'Ainda não há despesas para calcular o acerto deste mês.';
+            } else if (summary.paid === 0) {
+                settleText.textContent = 'Ainda não há despesas pagas para calcular o acerto deste mês.';
+            } else if (summary.balance === 0) {
+                settleText.innerHTML = `<span class="settlement-context">Para equilibrar as contas de ${escapeHTML(monthLabel)}:</span><strong class="settlement-transfer">Tudo equilibrado neste mês ✓</strong>`;
             } else {
-                const owesIS = balanceIS < 0;
-                const debtor = owesIS ? p1Name : p2Name;
-                const creditor = owesIS ? p2Name : p1Name;
-                const amount = Math.abs(balanceIS);
-                if (store.finances.settleMode === 'transfer') settleText.innerHTML = `<span class="text-danger">${escapeHTML(debtor)} transfere ${formatCurrency(amount)}</span> para ${escapeHTML(creditor)}`;
-                else settleText.innerHTML = `<span class="text-primary">${escapeHTML(debtor)} assume os próximos</span> (Saldo de ${formatCurrency(amount)} a quitar)`;
+                const balanceP1 = summary.balance / 100;
+                const p1Owes = balanceP1 < 0;
+                const debtor = p1Owes ? p1Name : p2Name;
+                const creditor = p1Owes ? p2Name : p1Name;
+                const amount = Math.abs(balanceP1);
+                const context = `<span class="settlement-context">Para equilibrar as contas de ${escapeHTML(monthLabel)}:</span>`;
+                if (store.finances.settleMode === 'transfer') {
+                    settleText.innerHTML = `${context}<strong class="settlement-transfer">${escapeHTML(debtor)} transfere ${formatCurrency(amount)} para ${escapeHTML(creditor)}</strong>`;
+                } else {
+                    settleText.innerHTML = `${context}<strong class="settlement-transfer">${escapeHTML(debtor)} assume os próximos gastos até compensar ${formatCurrency(amount)}</strong>`;
+                }
             }
         }
     }
+
 };
 
 export const renderFinances = () => {
@@ -129,7 +157,7 @@ export const renderFinances = () => {
                 propBar.classList.toggle('d-none', share === null);
                 document.getElementById('prop-val-is').textContent = `${pctIS}%`;
                 document.getElementById('prop-val-vo').textContent = `${pctVO}%`;
-                document.getElementById('prop-fill-is').style.width = `${pctIS}%`;
+                document.getElementById('prop-fill-is').style.setProperty('--progress-width', `${pctIS}%`);
             }
         } else if (store.finances.model === '100-p1') {
             valM2.textContent = `100% ${p1Name}`; 
@@ -158,16 +186,21 @@ export const renderFinances = () => {
     const createExpenseElement = (exp) => {
         const catInfo = CAT_INFO[exp.category] || CAT_INFO['outros'];
         const [, em, ed] = validDate(exp.date) ? exp.date.split('-') : ['', '?', '?'];
+        let dueMarkup = `Vence dia ${escapeHTML(ed)}/${escapeHTML(em)}`;
+        if (!exp.completed && validDate(exp.date)) {
+            const due = expenseDueStatus(exp.date);
+            dueMarkup = `<span class="expense-due-status expense-due-status--${due.type}">${escapeHTML(due.label)}</span><span class="expense-due-date"> · ${escapeHTML(ed)}/${escapeHTML(em)}</span>`;
+        }
         const li = document.createElement('li');
         li.className = `task-item expense-item ${exp.completed ? 'completed' : ''}`;
         li.innerHTML = `
             <div class="checkbox expense-checkbox"><i class="ph-bold ph-check"></i></div>
             <div class="dash-icon dash-icon-finance expense-cat-icon">
-                <div style="width: 14px; height: 14px; border-radius: 50%; background-color: ${catInfo.color};"></div>
+                <div class="expense-category-dot category-bg-${exp.category in CAT_INFO ? exp.category : 'outros'}"></div>
             </div>
             <div class="task-text flex-1">
                 <strong class="task-item-title">${escapeHTML(exp.title)}</strong>
-                <div class="task-item-subtitle">Vence dia ${escapeHTML(ed)}/${escapeHTML(em)}</div>
+                <div class="task-item-subtitle">${dueMarkup}</div>
             </div>
             ${getAvatarHtml(exp.owner, '24px')}
             <div class="expense-actions">
@@ -183,9 +216,18 @@ export const renderFinances = () => {
                 triggerHaptic(15); renderFinances();
             });
         });
-        li.querySelector('.btn-delete-expense').addEventListener('click', async () => {
-            if (!confirm('Excluir esta conta?')) return;
-            await runAction(li, async () => { await store.deleteRecord('expenses', exp.id); triggerHaptic(20); renderFinances(); });
+        li.querySelector('.btn-delete-expense').addEventListener('click', () => {
+            openConfirmSheet({
+                title: 'Excluir conta?',
+                message: `“${exp.title || 'Esta conta'}” será removida. Esta ação não poderá ser desfeita.`,
+                confirmLabel: 'Excluir conta',
+                onConfirm: async () => {
+                    await store.deleteRecord('expenses', exp.id);
+                    triggerHaptic(20);
+                    renderFinances();
+                    showToast('Conta excluída.');
+                }
+            });
         });
 
         li.querySelector('.btn-edit-expense').addEventListener('click', () => {
@@ -239,7 +281,7 @@ export const initFinances = () => {
         e.preventDefault(); const form = e.currentTarget;
         await runAction(form, async () => {
             await store.setFinances({ model: document.getElementById('fin-model-select').value, incomeIS: document.getElementById('fin-income-is').value, incomeVO: document.getElementById('fin-income-vo').value, settleMode: document.getElementById('fin-settle-mode-select').value, configured: true });
-            triggerHaptic(30); renderFinances(); closeAllModals(true);
+            triggerHaptic(30); renderFinances(); closeAllModals(true); showToast('Configuração financeira salva ✓');
         });
     });
 
@@ -261,6 +303,7 @@ export const initFinances = () => {
             const saved = id ? await saveFormEdit(expenseEditContext, data, 'expense-edit-warning') : await store.saveRecord('expenses', data, { create: true });
             document.getElementById('expense-id').value = saved.id;
             triggerHaptic(30); renderFinances(); closeAllModals(true); form.reset();
+            showToast(id ? 'Conta atualizada ✓' : 'Conta adicionada ✓');
         });
     });
 

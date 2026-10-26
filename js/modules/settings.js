@@ -1,5 +1,7 @@
 import { store } from '../store.js';
-import { triggerHaptic, showToast, runAction, openModal as openSheet, closeModal as closeSheet } from '../utils.js';
+import { showToast, runAction, openModal as openSheet, closeModal as closeSheet, openConfirmSheet } from '../utils.js';
+
+let settingsInitialized = false;
 
 export const applyTheme = (themeValue) => {
     const isDark = themeValue === 'dark' || (themeValue === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -13,50 +15,93 @@ export const applyTheme = (themeValue) => {
     }
 };
 
+const getInviteText = () => {
+    const code = store.profile?.inviteCode;
+    if (!code) throw new Error('O código do convite ainda não está disponível.');
+    return `Vem pro nosso Nook 💛
+Código: ${code}`;
+};
+
+const copyInviteText = async (text) => {
+    if (!navigator.clipboard?.writeText) throw new Error('Seu navegador não permite copiar o convite automaticamente.');
+    await navigator.clipboard.writeText(text);
+};
+
+const bindInviteButton = (id, action) => {
+    const button = document.getElementById(id);
+    if (!button || button.dataset.inviteBound === 'true') return;
+    button.dataset.inviteBound = 'true';
+    button.addEventListener('click', event => action(event.currentTarget));
+};
+
+const copyInviteCode = button => runAction(button, async () => {
+    const code = store.profile?.inviteCode;
+    if (!code) throw new Error('O código do convite ainda não está disponível.');
+    await copyInviteText(code);
+    showToast('Convite copiado ✓');
+});
+
+const shareInvite = button => runAction(button, async () => {
+    const text = getInviteText();
+
+    if (typeof navigator.share === 'function') {
+        try {
+            await navigator.share({ title: 'Nook', text });
+            showToast('Convite compartilhado ✓');
+            return;
+        } catch (error) {
+            if (error?.name === 'AbortError') return;
+        }
+    }
+
+    try {
+        await copyInviteText(text);
+        showToast('Convite copiado ✓');
+    } catch {
+        throw new Error('Não foi possível compartilhar nem copiar o convite.');
+    }
+});
+
+export const renderSettings = () => {
+    const profile = store.profile;
+    const partnerConnected = Boolean(profile?.p2Email && profile?.approved === true);
+    const status = partnerConnected ? 'Parceiro conectado ✓' : 'Esperando seu parceiro entrar';
+
+    document.querySelectorAll('[data-invite-code]').forEach(element => {
+        element.textContent = profile?.inviteCode || '---';
+    });
+    document.querySelectorAll('[data-invite-status]').forEach(element => {
+        element.textContent = status;
+    });
+
+    document.getElementById('setting-invite-actions')?.classList.toggle('d-none', partnerConnected);
+};
+
 export const initSettings = () => {
     applyTheme(store.theme);
+    renderSettings();
+
+    bindInviteButton('btn-copy-invite', copyInviteCode);
+    bindInviteButton('btn-share-invite', shareInvite);
+    bindInviteButton('btn-pending-copy-invite', copyInviteCode);
+    bindInviteButton('btn-pending-share-invite', shareInvite);
+
+    if (settingsInitialized) return;
+    settingsInitialized = true;
+
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
         if (store.theme === 'system') applyTheme('system');
     });
 
     const btnOpen = document.getElementById('btn-open-theme-modal');
-
-    const sheet = document.getElementById('theme-bottom-sheet');
     const themeBtns = document.querySelectorAll('.btn-theme-option');
 
     const openModal = () => {
-        triggerHaptic(10);
         openSheet('theme-bottom-sheet');
-        
         themeBtns.forEach(btn => {
-            if (btn.getAttribute('data-theme-value') === store.theme) {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
+            btn.classList.toggle('active', btn.getAttribute('data-theme-value') === store.theme);
         });
     };
-
-    // --- COPIAR CÓDIGO DO CASAL ---
-    const inviteCodeEl = document.getElementById('setting-invite-code');
-    const inviteCodeLi = inviteCodeEl?.closest('.setting-item');
-
-    if (inviteCodeLi) {
-        // Muda o mouse para parecer clicável e adiciona o evento
-        inviteCodeLi.classList.add('cursor-pointer');
-        inviteCodeLi.classList.remove('cursor-default');
-        
-        inviteCodeLi.addEventListener('click', () => {
-            const code = store.profile?.inviteCode;
-            if (code) {
-                navigator.clipboard.writeText(code).then(() => {
-                    showToast('Código copiado para a área de transferência!');
-                }).catch(() => {
-                    showToast('Não foi possível copiar o código.', 'ph-warning');
-                });
-            }
-        });
-    }
 
     const closeModal = () => {
         closeSheet('theme-bottom-sheet');
@@ -64,10 +109,8 @@ export const initSettings = () => {
 
     btnOpen?.addEventListener('click', openModal);
 
-
     themeBtns.forEach(btn => {
         btn.addEventListener('click', () => {
-            triggerHaptic(20);
             const newTheme = btn.getAttribute('data-theme-value');
             store.setTheme(newTheme);
             applyTheme(newTheme);
@@ -76,8 +119,11 @@ export const initSettings = () => {
     });
 
     document.getElementById('btn-logout-app')?.addEventListener('click', () => {
-        if (confirm('Deseja realmente sair do Nook?')) {
-            runAction(document.getElementById('btn-logout-app'), () => store.logout());
-        }
+        openConfirmSheet({
+            title: 'Sair do Nook?',
+            message: 'Você precisará entrar novamente para acessar o espaço do casal.',
+            confirmLabel: 'Sair',
+            onConfirm: () => store.logout()
+        });
     });
 };

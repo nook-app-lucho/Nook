@@ -17,6 +17,8 @@ const PHOTO_MIME_EXTENSIONS = {
     'image/webp': 'webp',
     'image/gif': 'gif'
 };
+const PHOTO_MAX_SIDE = 1600;
+const PHOTO_WEBP_QUALITY = 0.82;
 const isLegacyPhotoValue = value => typeof value === 'string' && /^(https?:\/\/|data:image\/)/i.test(value.trim());
 const photoPathParts = value => {
     if (typeof value !== 'string') return null;
@@ -24,6 +26,50 @@ const photoPathParts = value => {
     const parts = path.split('/');
     if (parts.length < 3 || !parts[0] || !PHOTO_FOLDERS.has(parts[1]) || parts.slice(2).some(part => !part || part === '.' || part === '..')) return null;
     return { path, coupleId: parts[0], folder: parts[1] };
+};
+
+const compressImage = async file => {
+    // GIF permanece intacto para não destruir eventual animação.
+    if (file.type === 'image/gif') return file;
+
+    const objectUrl = URL.createObjectURL(file);
+    try {
+        const image = await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error('A imagem selecionada não pôde ser lida.'));
+            img.src = objectUrl;
+        });
+
+        const width = image.naturalWidth;
+        const height = image.naturalHeight;
+        if (!width || !height) throw new Error('A imagem selecionada não possui dimensões válidas.');
+
+        const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(width, height));
+        const targetWidth = Math.max(1, Math.round(width * scale));
+        const targetHeight = Math.max(1, Math.round(height * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('Seu navegador não conseguiu preparar a imagem.');
+        context.drawImage(image, 0, 0, targetWidth, targetHeight);
+
+        const blob = await new Promise((resolve, reject) => {
+            canvas.toBlob(result => result ? resolve(result) : reject(new Error('Não foi possível gerar a imagem comprimida.')), 'image/webp', PHOTO_WEBP_QUALITY);
+        });
+
+        const baseName = String(file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo';
+        return new File([blob], `${baseName}.webp`, {
+            type: 'image/webp',
+            lastModified: file.lastModified || Date.now()
+        });
+    } catch (error) {
+        throw new Error(error?.message || 'Não foi possível comprimir a foto antes do upload.');
+    } finally {
+        URL.revokeObjectURL(objectUrl);
+    }
 };
 
 const emptyFinances = () => ({ model: '50/50', incomeIS: 0, incomeVO: 0, settleMode: 'transfer', configured: false });
@@ -183,15 +229,18 @@ export const store = {
         const couple = this.requireCouple();
         if (!PHOTO_FOLDERS.has(folder)) throw new Error('Destino de foto inválido.');
 
-        const extension = PHOTO_MIME_EXTENSIONS[file?.type];
-        if (!extension) throw new Error('Escolha uma imagem JPG, PNG, WebP ou GIF.');
+        if (!PHOTO_MIME_EXTENSIONS[file?.type]) throw new Error('Escolha uma imagem JPG, PNG, WebP ou GIF.');
         if (!Number.isFinite(file?.size) || file.size <= 0 || file.size > 8 * 1024 * 1024) throw new Error('A foto deve ter no máximo 8 MB.');
+
+        const uploadFile = await compressImage(file);
+        const extension = PHOTO_MIME_EXTENSIONS[uploadFile.type];
+        if (!extension) throw new Error('O formato gerado para a foto não é suportado.');
 
         const safePrefix = String(prefix || 'photo').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'photo';
         const path = `${couple}/${folder}/${safePrefix}-${crypto.randomUUID()}.${extension}`;
         const generation = this._generation;
 
-        unwrap(await supabase.storage.from(PHOTO_BUCKET).upload(path, file, { cacheControl: '3600', upsert: false }));
+        unwrap(await supabase.storage.from(PHOTO_BUCKET).upload(path, uploadFile, { cacheControl: '3600', upsert: false, contentType: uploadFile.type }));
 
         if (generation !== this._generation || !sameId(couple, this.currentCoupleId)) {
             try { await supabase.storage.from(PHOTO_BUCKET).remove([path]); } catch { /* limpeza best effort */ }

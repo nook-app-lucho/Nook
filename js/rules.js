@@ -1,4 +1,7 @@
 // Regras puras: sem DOM, sessão ou chamadas ao banco.
+export const OWNER = Object.freeze({ P1: 'IS', P2: 'VO', COUPLE: 'Casal' });
+export const GOAL_TYPE = Object.freeze({ FINANCIAL: 'financial', HABIT: 'habit' });
+const OWNER_VALUES = Object.freeze(Object.values(OWNER));
 export const sameId = (a, b) => a != null && b != null && String(a) === String(b);
 export const numberValue = (value, label = 'Valor', { min = 0, empty = false } = {}) => {
     if (value == null || String(value).trim() === '') {
@@ -32,6 +35,14 @@ export const dayNumber = value => {
     return Date.UTC(y, m - 1, d) / 86400000;
 };
 export const daysTogether = (start, today = localDate()) => Math.max(0, dayNumber(today) - dayNumber(start));
+export const expenseDueStatus = (date, today = localDate()) => {
+    const diff = dayNumber(date) - dayNumber(today);
+    if (diff === 0) return { type: 'today', days: 0, label: 'Vence hoje' };
+    if (diff === 1) return { type: 'upcoming', days: 1, label: 'Vence amanhã' };
+    if (diff > 1) return { type: 'upcoming', days: diff, label: `Vence em ${diff} dias` };
+    const overdue = Math.abs(diff);
+    return { type: 'overdue', days: overdue, label: `Atrasada há ${overdue} ${overdue === 1 ? 'dia' : 'dias'}` };
+};
 export const nonEmpty = (value, label = 'Texto') => {
     const text = String(value ?? '').trim();
     if (!text) throw new Error(`${label} é obrigatório.`);
@@ -54,7 +65,7 @@ export const expenseFacts = expense => {
     const amount = cents(expense.amount);
     if (amount <= 0) throw new Error('Valor inválido');
     if (typeof expense.completed !== 'boolean') throw new Error('Situação de pagamento inválida');
-    if (!['IS', 'VO', 'Casal'].includes(expense.owner)) throw new Error('Pagador inválido');
+    if (!OWNER_VALUES.includes(expense.owner)) throw new Error('Pagador inválido');
     return { amount, completed: expense.completed };
 };
 export const pendingSummary = expenses => {
@@ -88,8 +99,8 @@ export const financialSummary = (expenses, finances, month) => {
             continue;
         }
 
-        if (expense.owner === 'IS') paidP1 = safeCentSum(paidP1, amount);
-        else if (expense.owner === 'VO') paidP2 = safeCentSum(paidP2, amount);
+        if (expense.owner === OWNER.P1) paidP1 = safeCentSum(paidP1, amount);
+        else if (expense.owner === OWNER.P2) paidP2 = safeCentSum(paidP2, amount);
         else {
             const half = Math.ceil(amount / 2);
             paidP1 = safeCentSum(paidP1, half);
@@ -121,7 +132,7 @@ export const normalizeListItems = raw => {
     raw.forEach((entry, index) => {
         const idValid = plainObject(entry) && ((typeof entry.id === 'string' && entry.id.trim()) || (typeof entry.id === 'number' && Number.isSafeInteger(entry.id)));
         const priority = entry?.priority ?? 'none';
-        if (!idValid || ids.has(String(entry.id)) || typeof entry.text !== 'string' || !entry.text.trim() || typeof entry.completed !== 'boolean' || !['IS','VO','Casal'].includes(entry.owner) || !['none','urgent','casual'].includes(priority)) {
+        if (!idValid || ids.has(String(entry.id)) || typeof entry.text !== 'string' || !entry.text.trim() || typeof entry.completed !== 'boolean' || !OWNER_VALUES.includes(entry.owner) || !['none','urgent','casual'].includes(priority)) {
             invalid.push({ index, reason: 'Item incompleto, inválido ou com ID repetido.' }); return;
         }
         ids.add(String(entry.id)); items.push({ ...entry, priority });
@@ -151,19 +162,69 @@ export const validateExpense = data => {
     const result = { ...data, title: nonEmpty(data.title, 'Descrição'), amount: cents(data.amount) / 100 };
     if (result.amount <= 0) throw new Error('O valor da conta deve ser maior que zero.');
     if (!validDate(result.date)) throw new Error('Informe um vencimento válido.');
-    if (!['IS', 'VO', 'Casal'].includes(result.owner)) throw new Error('Escolha quem pagou ou pagará a conta.');
+    if (!OWNER_VALUES.includes(result.owner)) throw new Error('Escolha quem pagou ou pagará a conta.');
     return result;
 };
 export const validateGoal = data => {
-    const result = { ...data, title: nonEmpty(data.title, 'Título'), target: numberValue(data.target, 'Alvo', { min: 0.01 }), current: numberValue(data.current, 'Saldo inicial', { empty: true }) };
-    if (!['financial', 'habit'].includes(result.type)) throw new Error('Tipo de meta inválido.');
-    if (result.type === 'habit' && (!Number.isInteger(result.target) || !Number.isInteger(result.current))) throw new Error('Hábitos precisam de quantidades inteiras.');
-    if (result.type === 'financial') {
-        result.target = cents(result.target) / 100; result.current = cents(result.current) / 100;
+    const result = {
+        ...data,
+        title: nonEmpty(data.title, 'Título'),
+        target: numberValue(data.target, 'Alvo', { min: 0.01 }),
+        current: numberValue(data.current, 'Saldo atual', { empty: true })
+    };
+    if (!Object.values(GOAL_TYPE).includes(result.type)) throw new Error('Tipo de meta inválido.');
+    if (!OWNER_VALUES.includes(result.owner)) throw new Error('Responsável inválido.');
+
+    if (result.type === GOAL_TYPE.HABIT) {
+        if (!Number.isInteger(result.target) || !Number.isInteger(result.current)) throw new Error('Hábitos precisam de quantidades inteiras.');
+        result.unit = nonEmpty(result.unit, 'Unidade');
+    }
+
+    if (result.type === GOAL_TYPE.FINANCIAL) {
+        result.target = cents(result.target) / 100;
+        result.current = cents(result.current) / 100;
+        result.unit = null;
         if (!result.target) throw new Error('O alvo precisa ser de pelo menos R$ 0,01.');
     }
+
     if (result.deadline && !validDate(result.deadline)) throw new Error('Prazo inválido.');
     return result;
+};
+
+export const calculateGoalCurrentFromHistory = (history, type) => {
+    const normalized = normalizeGoalHistory(history);
+    if (normalized.invalid.length) throw new Error('O histórico desta meta possui registros inválidos.');
+
+    if (type === GOAL_TYPE.FINANCIAL) {
+        let totalCents = 0;
+        for (const entry of normalized.history) totalCents = safeCentSum(totalCents, cents(entry.amount, 'Valor do histórico'));
+        return totalCents / 100;
+    }
+
+    if (type === GOAL_TYPE.HABIT) {
+        let total = 0;
+        for (const entry of normalized.history) {
+            const amount = numberValue(entry.amount, 'Valor do histórico');
+            if (!Number.isInteger(amount)) throw new Error('O histórico de hábito precisa usar quantidades inteiras.');
+            total += amount;
+            if (!Number.isSafeInteger(total)) throw new Error('O histórico desta meta excede o limite suportado.');
+        }
+        return total;
+    }
+
+    throw new Error('Tipo de meta inválido.');
+};
+
+export const undoLastGoalProgress = goal => {
+    const normalized = normalizeGoalHistory(goal?.history);
+    if (normalized.invalid.length) throw new Error('O histórico desta meta possui registros inválidos.');
+    if (!normalized.history.length) throw new Error('Não há lançamento para desfazer.');
+
+    const history = normalized.history.slice(0, -1);
+    return {
+        history,
+        current: calculateGoalCurrentFromHistory(history, goal.type)
+    };
 };
 export const goalForecast = (goal, today = localDate()) => {
     const { current, target } = goalProgress(goal);

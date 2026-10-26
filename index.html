@@ -86,22 +86,27 @@
             </form>
         </div>
 
-        <!-- TELA DE CONTA EM ANÁLISE / AGUARDANDO LIBERAÇÃO -->
+        <!-- TELA DE ESPERA DO PARCEIRO -->
         <div id="view-pending-approval" class="view">
             <section class="hero-dashboard hero-pending">
                 <div class="hero-overlay"></div>
                 <div class="hero-content auth-hero-content">
-                    <h1 class="hero-title-sm">Conta em Análise</h1>
-                    <span class="hero-subtitle">Falta pouquinho para acessar o Nook!</span>
+                    <h1 class="hero-title-sm">Aguardando seu parceiro</h1>
+                    <span class="hero-subtitle">Compartilhe o convite para conectar o Nook de vocês.</span>
                 </div>
             </section>
             
-            <div class="dash-card dash-card-center">
-                <div class="icon-3xl">⏳</div>
-                <h3 class="card-title-lg">Acesso Pendente de Liberação</h3>
-                <p class="text-muted-sm">Sua conta foi criada com sucesso! Por motivos de segurança durante nossa fase de testes, o administrador precisa aprovar seu acesso.</p>
-                <span class="badge-status">Status: Aguardando Aprovação</span>
-                <button id="btn-check-approval" type="button" class="btn-primary">Verificar liberação</button>
+            <div class="dash-card dash-card-center pending-invite-card">
+                <div class="icon-3xl">💛</div>
+                <h3 class="card-title-lg">Seu Nook está pronto</h3>
+                <p class="text-muted-sm">Envie o código abaixo para seu parceiro entrar no mesmo espaço.</p>
+                <span class="badge-status" data-invite-status>Esperando seu parceiro entrar</span>
+                <div class="pending-invite-code">Código: <strong data-invite-code>---</strong></div>
+                <div class="pending-invite-actions">
+                    <button id="btn-pending-copy-invite" type="button" class="btn-primary btn-secondary"><i class="ph ph-copy"></i> Copiar código</button>
+                    <button id="btn-pending-share-invite" type="button" class="btn-primary"><i class="ph ph-share-network"></i> Compartilhar convite</button>
+                </div>
+                <button id="btn-check-approval" type="button" class="btn-link">Já entrou? Verificar conexão</button>
                 <button id="btn-pending-logout" class="btn-primary btn-outline-danger">Sair da Conta</button>
             </div>
         </div>
@@ -187,8 +192,23 @@
 
         <!-- TELA 1: HOME -->
         <div id="view-home" class="view">
+            <div class="view-skeleton home-skeleton" aria-hidden="true">
+                <div class="skeleton-block skeleton-hero"></div>
+                <div class="skeleton-mood-row">
+                    <div class="skeleton-card skeleton-mood-card"></div>
+                    <div class="skeleton-card skeleton-mood-card"></div>
+                </div>
+                <div class="skeleton-card skeleton-summary-card"></div>
+                <div class="skeleton-memory-grid">
+                    <div class="skeleton-card skeleton-memory-card"></div>
+                    <div class="skeleton-card skeleton-memory-card"></div>
+                </div>
+            </div>
             <section class="hero-dashboard" id="main-hero">
-                <button id="btn-edit-hero" class="btn-icon btn-edit-hero"><i class="ph ph-camera"></i></button>
+                <div class="hero-actions">
+                    <button id="btn-open-settings" class="btn-icon btn-hero-control" title="Abrir ajustes" aria-label="Abrir ajustes"><i class="ph ph-gear"></i></button>
+                    <button id="btn-edit-hero" class="btn-icon btn-hero-control" title="Editar capa" aria-label="Editar capa"><i class="ph ph-camera"></i></button>
+                </div>
                 <div class="hero-overlay"></div>
                 <div class="hero-content">
                     <div class="avatar-group">
@@ -214,6 +234,7 @@
             </div>
             <span id="mood-icon-p1" class="mood-icon">💭</span>
             <span id="mood-text-p1" class="mood-text">Como está?</span>
+            <span id="mood-hint-p1" class="mood-hint">Toque para alterar</span>
         </div>
 
         <!-- Cartão P2 -->
@@ -224,6 +245,7 @@
             </div>
             <span id="mood-icon-p2" class="mood-icon">💭</span>
             <span id="mood-text-p2" class="mood-text">Como está?</span>
+            <span id="mood-hint-p2" class="mood-hint">Somente leitura</span>
         </div>
     </div>
 </section>
@@ -351,15 +373,34 @@
             </div>
             
             <section class="tasks-section">
-                <h3 class="section-title" id="lists-section-title">PENDENTES</h3>
+                <h3 class="section-title" id="lists-section-title">PENDENTES (0)</h3>
                 <div class="task-group">
                     <ul class="task-list" id="task-list-container"></ul>
+                </div>
+            </section>
+
+            <section class="tasks-section mt-16 d-none" id="lists-completed-section">
+                <button type="button" class="list-completed-toggle" id="btn-toggle-completed" aria-expanded="false">
+                    <span id="lists-completed-title">CONCLUÍDAS (0)</span>
+                    <i class="ph ph-caret-down" id="lists-completed-caret"></i>
+                </button>
+                <div class="task-group d-none" id="lists-completed-group">
+                    <ul class="task-list" id="completed-task-list-container"></ul>
                 </div>
             </section>
         </div>
 
         <!-- TELA 3: FINANÇAS -->
         <div id="view-finances" class="view">
+            <div class="view-skeleton finance-skeleton" aria-hidden="true">
+                <div class="skeleton-line skeleton-title-line"></div>
+                <div class="skeleton-card skeleton-summary-card"></div>
+                <div class="skeleton-expense-list">
+                    <div class="skeleton-expense-row"><span class="skeleton-circle"></span><span class="skeleton-line skeleton-line-grow"></span><span class="skeleton-line skeleton-amount-line"></span></div>
+                    <div class="skeleton-expense-row"><span class="skeleton-circle"></span><span class="skeleton-line skeleton-line-grow"></span><span class="skeleton-line skeleton-amount-line"></span></div>
+                    <div class="skeleton-expense-row"><span class="skeleton-circle"></span><span class="skeleton-line skeleton-line-grow"></span><span class="skeleton-line skeleton-amount-line"></span></div>
+                </div>
+            </div>
             <header class="top-brand-bar">
                 <div class="brand-greeting"><span class="greeting-text">Finanças</span></div>
                 <div class="flex-gap-8">
@@ -379,7 +420,7 @@
             <div id="fin-settlement-card" class="dash-card fin-settlement d-none">
                 <div class="dash-icon bg-primary text-white"><i class="ph-fill ph-scales"></i></div>
                 <div class="dash-info">
-                    <span class="dash-title settlement-label">Acerto por vencimento</span>
+                    <span class="dash-title settlement-label" id="fin-settlement-label">Acerto do mês</span>
                     <span class="dash-value settlement-value" id="fin-settlement-text">Calculando...</span>
                 </div>
             </div>
@@ -406,7 +447,7 @@
                     <span><span id="prop-label-is">P1: </span><strong id="prop-val-is">50%</strong></span>
                     <span><span id="prop-label-vo">P2: </span><strong id="prop-val-vo">50%</strong></span>
                 </div>
-                <div class="progress-bar"><div id="prop-fill-is" class="progress-fill" style="width: 50%;"></div></div>
+                <div class="progress-bar"><div id="prop-fill-is" class="progress-fill progress-fill--half"></div></div>
             </div>
             
             <p id="fin-data-warning" role="alert" class="text-danger d-none"></p>
@@ -430,10 +471,21 @@
 
         <!-- TELA 4: AGENDA -->
         <div id="view-agenda" class="view">
+            <div class="view-skeleton agenda-skeleton" aria-hidden="true">
+                <div class="skeleton-line skeleton-title-line"></div>
+                <div class="skeleton-date-row">
+                    <div class="skeleton-date-pill"></div><div class="skeleton-date-pill"></div><div class="skeleton-date-pill"></div><div class="skeleton-date-pill"></div><div class="skeleton-date-pill"></div>
+                </div>
+                <div class="skeleton-agenda-list">
+                    <div class="skeleton-agenda-row"><span class="skeleton-circle"></span><div class="skeleton-text-stack"><span class="skeleton-line"></span><span class="skeleton-line skeleton-line-short"></span></div></div>
+                    <div class="skeleton-agenda-row"><span class="skeleton-circle"></span><div class="skeleton-text-stack"><span class="skeleton-line"></span><span class="skeleton-line skeleton-line-short"></span></div></div>
+                    <div class="skeleton-agenda-row"><span class="skeleton-circle"></span><div class="skeleton-text-stack"><span class="skeleton-line"></span><span class="skeleton-line skeleton-line-short"></span></div></div>
+                </div>
+            </div>
             <header class="top-brand-bar">
                 <div class="brand-greeting agenda-header-actions">
                     <span class="greeting-text">Agenda</span>
-                    <div class="view-toggle" style="margin-left: auto; margin-right: 8px; display: flex; gap: 4px;">
+                    <div class="view-toggle">
                         <button id="btn-view-week" class="tab-pill tab-pill-sm active">Semana</button>
                         <button id="btn-view-month" class="tab-pill tab-pill-sm outline">Mês</button>
                     </div>
@@ -473,7 +525,19 @@
                 <div class="metric-card"><span class="metric-label">Guardado (Metas)</span><span class="metric-value" id="metric-goals-saved">R$ 0</span></div>
                 <div class="metric-card"><span class="metric-label">Metas Ativas</span><span class="metric-value" id="metric-goals-count">0</span></div>
             </section>
-            <section class="dashboard-cards" id="goals-list-container"></section>
+            <section class="tasks-section mt-16">
+                <h3 class="section-title">EM ANDAMENTO</h3>
+                <section class="dashboard-cards" id="goals-list-container"></section>
+            </section>
+            <section class="tasks-section mt-16 d-none" id="goals-completed-section">
+                <button type="button" class="list-completed-toggle" id="btn-toggle-completed-goals" aria-expanded="false">
+                    <span id="goals-completed-title">CONCLUÍDAS (0)</span>
+                    <i class="ph ph-caret-down" id="goals-completed-caret"></i>
+                </button>
+                <div id="goals-completed-group" class="d-none">
+                    <section class="dashboard-cards" id="completed-goals-list-container"></section>
+                </div>
+            </section>
         </div>
 
         <!-- TELA 6: AJUSTES -->
@@ -497,9 +561,19 @@
                 <span id="current-theme-label" class="theme-label">Sistema</span>
                 <i class="ph ph-caret-right text-muted"></i>
             </li>
-            <li class="task-item setting-item cursor-default">
+            <li class="task-item setting-item cursor-default setting-invite-item">
                 <i class="ph ph-link text-muted icon-lg"></i>
-                <span class="task-text">Código do Casal: <strong id="setting-invite-code" class="text-primary">---</strong></span>
+                <div class="setting-invite-content">
+                    <span class="task-text font-bold">Seu Nook</span>
+                    <span id="setting-invite-status" data-invite-status class="setting-invite-status">Esperando seu parceiro entrar</span>
+                    <div id="setting-invite-actions" class="setting-invite-actions">
+                        <div class="setting-invite-code">Código do convite: <strong id="setting-invite-code" data-invite-code class="text-primary">---</strong></div>
+                        <div class="setting-invite-buttons">
+                            <button type="button" id="btn-copy-invite" class="btn-primary btn-secondary"><i class="ph ph-copy"></i> Copiar código</button>
+                            <button type="button" id="btn-share-invite" class="btn-primary"><i class="ph ph-share-network"></i> Compartilhar convite</button>
+                        </div>
+                    </div>
+                </div>
             </li>
         </ul>
     </div>
@@ -520,11 +594,10 @@
         
         <nav class="bottom-bar">
             <a href="#" class="nav-item active" data-target="view-home"><i class="ph-fill ph-house"></i><span>Início</span></a>
-            <a href="#" class="nav-item" data-target="view-finances"><i class="ph ph-wallet"></i><span>Finanças</span></a>
             <a href="#" class="nav-item" data-target="view-lists"><i class="ph ph-check-square-offset"></i><span>Listas</span></a>
             <a href="#" class="nav-item" data-target="view-agenda"><i class="ph ph-calendar-blank"></i><span>Agenda</span></a>
+            <a href="#" class="nav-item" data-target="view-finances"><i class="ph ph-wallet"></i><span>Finanças</span></a>
             <a href="#" class="nav-item" data-target="view-goals"><i class="ph ph-flag"></i><span>Metas</span></a>
-            <a href="#" class="nav-item" data-target="view-settings"><i class="ph ph-gear"></i><span>Ajustes</span></a>
         </nav>
 
         <!-- MODAIS OVERLAYS -->
@@ -534,11 +607,13 @@
         <div class="bottom-sheet" id="event-bottom-sheet">
             <div class="sheet-handle"></div>
             <div class="sheet-header">
-                <h2>Novo Compromisso</h2>
+                <h2 id="event-modal-title">Novo Compromisso</h2>
                 <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
             </div>
             <form id="form-add-event" class="sheet-body">
-                <div class="form-group"><label for="event-title">Título</label><input type="text" id="event-title" class="form-control" required></div>
+                <p id="agenda-edit-warning" class="empty-state d-none" role="alert"></p>
+                <input type="hidden" id="event-id">
+                <div class="form-group"><label for="event-title">Título</label><input type="text" id="event-title" class="form-control" data-autofocus required></div>
                 <div class="form-row">
                     <div class="form-group flex-1"><label for="event-date">Data</label><input type="date" id="event-date" class="form-control" required></div>
                     <div class="form-group flex-1"><label for="event-time">Horário</label><input type="time" id="event-time" class="form-control" required></div>
@@ -552,7 +627,7 @@
                     </select>
                 </div>
                 <div class="form-group"><label for="event-subtitle">Local / Nota</label><input type="text" id="event-subtitle" class="form-control"></div>
-                <button type="submit" class="btn-primary">Salvar Compromisso</button>
+                <button type="submit" class="btn-primary" id="btn-submit-event">Salvar Compromisso</button>
             </form>
         </div>
         
@@ -592,7 +667,7 @@
             <form id="form-add-expense" class="sheet-body">
                 <p id="expense-edit-warning" class="empty-state d-none" role="alert"></p>
                 <input type="hidden" id="expense-id">
-                <div class="form-group"><label for="expense-title">Descrição da Conta</label><input type="text" id="expense-title" class="form-control" placeholder="Ex: Luz, Ifood" required></div>
+                <div class="form-group"><label for="expense-title">Descrição da Conta</label><input type="text" id="expense-title" class="form-control" data-autofocus placeholder="Ex: Luz, Ifood" required></div>
                 <div class="form-row">
                     <div class="form-group flex-1"><label for="expense-amount">Valor (R$)</label><input type="number" id="expense-amount" class="form-control" placeholder="150.00" min="0.01" step="0.01" required></div>
                     <div class="form-group flex-1"><label for="expense-date">Vencimento</label><input type="date" id="expense-date" class="form-control" required></div>
@@ -672,47 +747,38 @@
             </div>
         </div>
         
-        <!-- Modal: Nova Meta -->
+        <!-- Modal: Nova / Editar Meta -->
         <div class="bottom-sheet" id="goal-bottom-sheet">
             <div class="sheet-handle"></div>
-            <div class="sheet-header"><h2>Nova Meta</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
+            <div class="sheet-header"><h2 id="goal-modal-title">Nova Meta</h2><button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button></div>
             <form id="form-add-goal" class="sheet-body">
+                <p id="goal-edit-warning" class="empty-state d-none" role="alert"></p>
                 <div class="form-group"><label for="goal-type">Tipo</label><select id="goal-type" class="form-control"><option value="financial">Financeira</option><option value="habit">Hábito</option></select></div>
-                <div class="form-group"><label for="goal-title">Título</label><input type="text" id="goal-title" class="form-control" required></div>
-<div class="form-row">
-    <div class="form-group flex-1">
-        <label for="goal-icon">Ícone</label>
-        <input type="hidden" id="goal-icon" value="🎯">
-        <button type="button" id="btn-select-goal-icon" class="form-control btn-goal-icon-picker">
-            <span id="goal-icon-preview">🎯</span>
-            <i class="ph ph-caret-down text-muted"></i>
-        </button>
-    </div>
-    <div class="form-group" style="flex: 2;">
-        <label for="goal-owner">Responsável</label>
-        <select id="goal-owner" class="form-control">
-            <option value="Casal">Nós</option>
-            <option value="IS">P1</option>
-            <option value="VO">P2</option>
-        </select>
-    </div>
-</div>
-<div class="form-group mb-16">
-    <label>Sugestões de Ícones</label>
-    <div id="goal-icon-presets" class="preset-icons-grid"></div>
-</div>
+                <div class="form-group"><label for="goal-title">Título</label><input type="text" id="goal-title" class="form-control" data-autofocus required></div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label for="goal-icon">Ícone</label>
+                        <input type="hidden" id="goal-icon" value="🎯">
+                        <button type="button" id="btn-select-goal-icon" class="form-control btn-goal-icon-picker"><span id="goal-icon-preview">🎯</span><i class="ph ph-caret-down text-muted"></i></button>
+                    </div>
+                    <div class="form-group goal-owner-group">
+                        <label for="goal-owner">Responsável</label>
+                        <select id="goal-owner" class="form-control"><option value="Casal">Nós</option><option value="IS">P1</option><option value="VO">P2</option></select>
+                    </div>
+                </div>
+                <div class="form-group mb-16"><label>Sugestões de Ícones</label><div id="goal-icon-presets" class="preset-icons-grid"></div></div>
                 <div id="group-goal-financial" class="goal-financial-group">
                     <div class="form-row">
                         <div class="form-group flex-1 mb-0"><label for="goal-target-fin">Alvo</label><input type="number" id="goal-target-fin" class="form-control" min="0.01" step="0.01"></div>
-                        <div class="form-group flex-1 mb-0"><label for="goal-initial-fin">Inicial</label><input type="number" id="goal-initial-fin" class="form-control" min="0" step="0.01"></div>
+                        <div class="form-group flex-1 mb-0" id="goal-current-group"><label for="goal-initial-fin" id="goal-current-label">Inicial</label><input type="number" id="goal-initial-fin" class="form-control" min="0" step="0.01"></div>
                     </div>
-                    <div class="form-group mb-0"><label for="goal-deadline-fin">Prazo</label><input type="date" id="goal-deadline-fin" class="form-control"></div>
                 </div>
                 <div id="group-goal-habit" class="form-row d-none">
                     <div class="form-group flex-1"><label for="goal-target-habit">Repetições</label><input type="number" id="goal-target-habit" class="form-control" min="1" step="1"></div>
-                    <div class="form-group flex-1"><label for="goal-unit-habit">Unidade</label><input type="text" id="goal-unit-habit" class="form-control"></div>
+                    <div class="form-group flex-1"><label for="goal-unit-habit">Unidade</label><input type="text" id="goal-unit-habit" class="form-control" placeholder="Ex: vezes, treinos"></div>
                 </div>
-                <button type="submit" class="btn-primary">Criar Meta</button>
+                <div class="form-group"><label for="goal-deadline">Prazo</label><input type="date" id="goal-deadline" class="form-control"></div>
+                <button type="submit" class="btn-primary" id="btn-submit-goal">Criar Meta</button>
             </form>
         </div>
         
@@ -731,6 +797,25 @@
             </div>
         </div>
 
+        <!-- Modal: Renomear Lista -->
+        <div class="bottom-sheet" id="rename-list-bottom-sheet" data-silent-discard="true">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Renomear lista</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <form id="form-rename-list" class="sheet-body">
+                <div class="form-group">
+                    <label for="rename-list-name">Nome da lista</label>
+                    <input type="text" id="rename-list-name" class="form-control" data-autofocus required>
+                </div>
+                <div class="sheet-actions">
+                    <button type="button" class="btn-primary btn-secondary btn-close-modal">Cancelar</button>
+                    <button type="submit" class="btn-primary">Salvar</button>
+                </div>
+            </form>
+        </div>
+
 
         <!-- Modal: Limpar itens concluídos -->
         <div class="bottom-sheet" id="clear-completed-bottom-sheet">
@@ -743,6 +828,22 @@
                 <p id="clear-completed-message" class="empty-state"></p>
                 <button id="btn-confirm-clear-completed" type="button" class="btn-primary btn-danger-light"><i class="ph ph-trash"></i> Excluir concluídas</button>
                 <button type="button" class="btn-primary btn-secondary btn-close-modal">Cancelar</button>
+            </div>
+        </div>
+
+        <!-- Modal: Confirmação destrutiva reutilizável -->
+        <div class="bottom-sheet" id="confirm-action-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2 id="confirm-action-title">Confirmar ação</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="sheet-body flex-col gap-12">
+                <p id="confirm-action-message" class="confirm-action-message"></p>
+                <div class="sheet-actions">
+                    <button type="button" class="btn-primary btn-secondary btn-close-modal">Cancelar</button>
+                    <button id="btn-confirm-action" type="button" class="btn-primary btn-danger-light">Excluir</button>
+                </div>
             </div>
         </div>
         
@@ -774,6 +875,25 @@
             <div class="sheet-body"><ul class="task-list history-list" id="goal-history-list"></ul></div>
         </div>
 
+        <!-- MODAL: VIEWER DE MEMÓRIA -->
+        <div class="bottom-sheet memory-viewer-sheet" id="memory-viewer-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Memória</h2>
+                <button class="btn-icon btn-close-modal" aria-label="Fechar memória"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="sheet-body memory-viewer-body">
+                <img id="memory-viewer-image" class="memory-viewer-image" alt="">
+                <span id="memory-viewer-date" class="memory-viewer-date"></span>
+                <h3 id="memory-viewer-title" class="memory-viewer-title"></h3>
+                <p id="memory-viewer-note" class="memory-viewer-note"></p>
+                <div class="sheet-actions">
+                    <button type="button" id="btn-viewer-edit-memory" class="btn-primary btn-secondary"><i class="ph ph-pencil-simple"></i> Editar</button>
+                    <button type="button" id="btn-viewer-delete-memory" class="btn-primary btn-danger-light"><i class="ph ph-trash"></i> Excluir</button>
+                </div>
+            </div>
+        </div>
+
         <!-- MODAL: NOVA MEMÓRIA -->
         <div class="bottom-sheet" id="memory-bottom-sheet">
             <div class="sheet-handle"></div>
@@ -785,7 +905,7 @@
                 <p id="memory-edit-warning" class="empty-state d-none" role="alert"></p>
                 <div class="form-group">
                     <label for="memory-title">Título do Momento</label>
-                    <input type="text" id="memory-title" class="form-control" placeholder="Ex: Viagem inesquecível pra serra" required>
+                    <input type="text" id="memory-title" class="form-control" data-autofocus placeholder="Ex: Viagem inesquecível pra serra" required>
                 </div>
                 <div class="form-group">
                     <label for="memory-date">Data</label>
@@ -811,15 +931,16 @@
         <div class="bottom-sheet" id="note-bottom-sheet">
             <div class="sheet-handle"></div>
             <div class="sheet-header">
-                <h2>Deixar um Recado</h2>
+                <h2 id="note-modal-title">Deixar um Recado</h2>
                 <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
             </div>
             <form id="form-add-note" class="sheet-body">
+                <p id="note-edit-warning" class="empty-state d-none" role="alert"></p>
                 <div class="form-group">
                     <label for="note-text">Seu recadinho</label>
-                    <textarea id="note-text" class="form-control textarea-note" rows="3" placeholder="Ex: Bom dia amor, deixei o café pronto! Amo você." required></textarea>
+                    <textarea id="note-text" class="form-control textarea-note" data-autofocus rows="3" placeholder="Ex: Bom dia amor, deixei o café pronto! Amo você." required></textarea>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="note-color-group">
                     <label for="note-color">Cor do Post-it</label>
                     <select id="note-color" class="form-control">
                         <option value="yellow">💛 Amarelinho Clássico</option>
@@ -833,9 +954,10 @@
                         <option value="24">24 horas</option>
                         <option value="72">3 dias</option>
                         <option value="168" selected>7 dias</option>
+                        <option value="permanent">Até eu remover</option>
                     </select>
                 </div>
-                <button type="submit" class="btn-primary">Fixar no Mural</button>
+                <button type="submit" class="btn-primary" id="btn-submit-note">Fixar no Mural</button>
             </form>
         </div>
 
@@ -849,7 +971,7 @@
             <form id="form-create-list" class="sheet-body">
                 <div class="form-group">
                     <label for="create-list-name">Nome da Lista</label>
-                    <input type="text" id="create-list-name" class="form-control" placeholder="Ex: Livros para Ler, Receitas" required>
+                    <input type="text" id="create-list-name" class="form-control" data-autofocus placeholder="Ex: Livros para Ler, Receitas" required>
                 </div>
                 <div class="form-group">
                     <label for="create-list-type">Tipo de Funcionalidade</label>

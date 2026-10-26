@@ -1,9 +1,11 @@
 import { store } from '../store.js';
-import { triggerHaptic, getLocalDateString, getInitials, escapeHTML, openModal, closeAllModals, enableDesktopScroll, runAction } from '../utils.js';
-import { validDate } from '../rules.js';
+import { triggerHaptic, getLocalDateString, getInitials, escapeHTML, openModal, openConfirmSheet, closeAllModals, enableDesktopScroll, runAction, showToast, editWarning, saveFormEdit } from '../utils.js';
+import { OWNER, sameId, validDate } from '../rules.js';
 
 let selectedDateStr = getLocalDateString(new Date());
 let currentAgendaView = 'week';
+let agendaEditContext = null;
+let editingAgendaId = null;
 
 export const applyAgendaDateFilter = () => {
     const selectedListEl = document.getElementById('agenda-selected-list');
@@ -28,7 +30,13 @@ export const applyAgendaDateFilter = () => {
             emptyState.className = 'empty-state empty-state-no-border';
             selectedListEl.appendChild(emptyState);
         }
-        emptyState.textContent = 'Dia livre!';
+        emptyState.innerHTML = `
+            <div class="empty-state-with-action">
+                <span>Nada marcado para este dia.</span>
+                <button type="button" class="btn-primary btn-outline-primary btn-inline-action" id="btn-empty-agenda-add">Adicionar compromisso</button>
+            </div>
+        `;
+        emptyState.querySelector('#btn-empty-agenda-add')?.addEventListener('click', () => document.getElementById('btn-open-event-modal')?.click());
         emptyState.classList.remove('d-none');
     } else if (emptyState) {
         emptyState.classList.add('d-none');
@@ -60,7 +68,6 @@ export const renderDateScroller = () => {
             bubble.innerHTML = `<span class="day-name">${diasSemana[tempDate.getDay()]}</span><span class="day-number">${tempDate.getDate()}</span><div class="event-dot"></div>`;
             
             bubble.addEventListener('click', (e) => {
-                triggerHaptic(10);
                 selectedDateStr = dateStr;
                 document.querySelectorAll('.date-bubble').forEach(b => b.classList.remove('active'));
                 e.currentTarget.classList.add('active');
@@ -95,7 +102,6 @@ export const renderDateScroller = () => {
             dayDiv.className = `month-day ${dateStr === selectedDateStr ? 'active' : ''} ${hasEvent ? 'has-events' : ''}`;
             dayDiv.innerHTML = `${i}<div class="event-dot"></div>`;
             dayDiv.addEventListener('click', () => {
-                triggerHaptic(10);
                 selectedDateStr = dateStr;
                 renderDateScroller(); 
                 // OTIMIZAÇÃO AQUI TAMBÉM
@@ -104,6 +110,25 @@ export const renderDateScroller = () => {
             monthGridEl.appendChild(dayDiv);
         }
     }
+};
+
+const firstName = (value, fallback) => String(value || '').trim().split(/\s+/)[0] || fallback;
+
+const openAgendaEditor = event => {
+    agendaEditContext = store.captureEdit('agenda', event.id);
+    const opened = agendaEditContext.record;
+    editingAgendaId = opened.id;
+    editWarning('agenda-edit-warning');
+
+    document.getElementById('event-id').value = opened.id;
+    document.getElementById('event-title').value = opened.title || '';
+    document.getElementById('event-date').value = opened.date || '';
+    document.getElementById('event-time').value = String(opened.time || '').slice(0, 5);
+    document.getElementById('event-owner').value = opened.owner || OWNER.COUPLE;
+    document.getElementById('event-subtitle').value = opened.subtitle || '';
+    document.getElementById('event-modal-title').textContent = 'Editar Compromisso';
+    document.getElementById('btn-submit-event').textContent = 'Salvar Alterações';
+    openModal('event-bottom-sheet');
 };
 
 export const renderAgendaView = () => {
@@ -121,46 +146,76 @@ export const renderAgendaView = () => {
     
     const createEl = (ev, showBadge) => {
         let displayOwner = ev.owner;
-        if (ev.owner === 'VO') displayOwner = p2Init;
-        if (ev.owner === 'IS') displayOwner = p1Init;
-        
-        let badgeClass = (ev.owner === 'VO' || ev.owner === p2Init) ? 'bg-muted' : '';
-        if (ev.owner === 'Casal') { badgeClass = 'bg-casal'; displayOwner = 'NÓS'; }
-        
+        if (ev.owner === OWNER.P2) displayOwner = p2Init;
+        if (ev.owner === OWNER.P1) displayOwner = p1Init;
+
+        let badgeClass = (ev.owner === OWNER.P2 || ev.owner === p2Init) ? 'bg-muted' : '';
+        if (ev.owner === OWNER.COUPLE) { badgeClass = 'bg-casal'; displayOwner = 'NÓS'; }
+
         const safeTitle = escapeHTML(ev.title);
         const safeSubtitle = ev.subtitle ? escapeHTML(ev.subtitle) : '';
         const [, em, ed] = validDate(ev.date) ? ev.date.split('-') : ['', '?', '?'];
         const dateTag = showBadge ? `<span class="agenda-date-badge">${ed}/${em}</span>` : '';
-        
-        let rsvpSection = '';
-        if (ev.owner === 'Casal') {
-            const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
-            if (ev.createdBy && ev.createdBy !== myPersonId && !ev.confirmed) {
-                rsvpSection = `<button class="action-btn btn-rsvp" style="padding: 4px 10px; font-size: 0.75rem; margin-top: 6px; width: fit-content;"><i class="ph-bold ph-check"></i> Confirmar Ciente</button>`;
-            } else if (ev.confirmed) {
-                rsvpSection = `<div style="font-size: 0.7rem; color: var(--primary); margin-top: 6px; font-weight: 700;"><i class="ph-bold ph-check-double"></i> Ambos cientes</div>`;
+        const myPersonId = store.getLoggedUser();
+        const creatorName = ev.createdBy === 'p1'
+            ? firstName(store.profile?.p1, 'P1')
+            : ev.createdBy === 'p2'
+                ? firstName(store.profile?.p2, 'P2')
+                : '';
+        const partnerName = myPersonId === 'p1' ? firstName(store.profile?.p2, 'seu parceiro') : firstName(store.profile?.p1, 'seu parceiro');
+        const creatorText = ev.createdBy
+            ? (ev.createdBy === myPersonId ? 'Criado por você' : `Criado por ${creatorName}`)
+            : 'Criador não identificado';
+
+        let awarenessSection = '';
+        if (ev.owner === OWNER.COUPLE) {
+            if (ev.confirmed) {
+                awarenessSection = `<div class="agenda-rsvp-confirmed"><i class="ph-bold ph-check-double"></i> Ambos cientes</div>`;
+            } else if (ev.createdBy && ev.createdBy !== myPersonId) {
+                awarenessSection = `<button class="action-btn btn-rsvp agenda-rsvp-action"><i class="ph-bold ph-check"></i> Ciente</button>`;
+            } else if (ev.createdBy === myPersonId) {
+                awarenessSection = `<div class="agenda-rsvp-waiting">Aguardando ${escapeHTML(partnerName)} ficar ciente</div>`;
+            } else {
+                awarenessSection = `<div class="agenda-rsvp-waiting">Confirmação indisponível para compromisso antigo</div>`;
             }
         }
-        
+
         const li = document.createElement('li');
         li.className = 'task-item';
         li.innerHTML = `
-            <div class="task-text flex-col" style="flex: 1;">
+            <div class="task-text flex-col flex-1">
                 <strong class="task-item-title">${safeTitle}</strong>
                 <div class="task-item-subtitle">${dateTag} ${escapeHTML(ev.time)} ${safeSubtitle ? '- ' + safeSubtitle : ''}</div>
-                ${rsvpSection}
+                <div class="agenda-created-by">${escapeHTML(creatorText)}</div>
+                ${awarenessSection}
             </div>
             <div class="task-badge ${badgeClass}">${escapeHTML(displayOwner)}</div>
-            <button class="btn-delete-event"><i class="ph ph-trash"></i></button>
+            <div class="agenda-item-actions">
+                <button class="btn-edit-item btn-edit-event" title="Editar compromisso"><i class="ph ph-pencil-simple"></i></button>
+                <button class="btn-delete-event" title="Excluir compromisso"><i class="ph ph-trash"></i></button>
+            </div>
         `;
-        
-        const rsvpBtn = li.querySelector('.btn-rsvp');
-        if (rsvpBtn) {
-            rsvpBtn.addEventListener('click', async () => { await runAction(li, async () => { await store.saveRecord('agenda', { ...ev, confirmed: true }); triggerHaptic(15); renderAgendaView(); }); });
-        }
-        li.querySelector('.btn-delete-event').addEventListener('click', async () => {
-            if (!confirm('Excluir este compromisso?')) return;
-            await runAction(li, async () => { await store.deleteRecord('agenda', ev.id); renderDateScroller(); renderAgendaView(); });
+
+        li.querySelector('.btn-rsvp')?.addEventListener('click', async () => {
+            await runAction(li, async () => {
+                await store.saveRecord('agenda', { ...ev, confirmed: true });
+                renderAgendaView();
+                showToast('Marcado como ciente ✓');
+            });
+        });
+        li.querySelector('.btn-edit-event')?.addEventListener('click', () => openAgendaEditor(ev));
+        li.querySelector('.btn-delete-event').addEventListener('click', () => {
+            openConfirmSheet({
+                title: 'Excluir compromisso?',
+                message: `“${ev.title}” será removido da agenda. Esta ação não poderá ser desfeita.`,
+                confirmLabel: 'Excluir compromisso',
+                onConfirm: async () => {
+                    await store.deleteRecord('agenda', ev.id);
+                    renderDateScroller();
+                    renderAgendaView();
+                    showToast('Compromisso excluído.');
+                }
+            });
         });
         return li;
     };
@@ -208,13 +263,11 @@ export const initAgenda = () => {
                 selectedDateStr = selectedDate;
                 renderDateScroller();
                 applyAgendaDateFilter();
-                triggerHaptic(15);
             }
         });
     }
 
     document.getElementById('btn-go-today')?.addEventListener('click', () => {
-        triggerHaptic(10);
         selectedDateStr = getLocalDateString(new Date()); 
         renderDateScroller(); 
         applyAgendaDateFilter(); 
@@ -222,15 +275,47 @@ export const initAgenda = () => {
 
     const form = document.getElementById('form-add-event');
     document.getElementById('btn-open-event-modal')?.addEventListener('click', () => {
+        agendaEditContext = null;
+        editingAgendaId = null;
+        editWarning('agenda-edit-warning');
+        form?.reset();
+        document.getElementById('event-id').value = '';
         document.getElementById('event-date').value = selectedDateStr;
+        document.getElementById('event-modal-title').textContent = 'Novo Compromisso';
+        document.getElementById('btn-submit-event').textContent = 'Salvar Compromisso';
         openModal('event-bottom-sheet');
     });
 
     form?.addEventListener('submit', async e => {
         e.preventDefault(); const target = e.currentTarget;
         await runAction(target, async () => {
-            await store.saveRecord('agenda', { title: document.getElementById('event-title').value, date: document.getElementById('event-date').value, time: document.getElementById('event-time').value, owner: document.getElementById('event-owner').value, subtitle: document.getElementById('event-subtitle').value, createdBy: store.getLoggedUser(), confirmed: false }, { create: true });
-            renderDateScroller(); renderAgendaView(); triggerHaptic(30); closeAllModals(true); target.reset();
+            const id = document.getElementById('event-id').value;
+            const patch = {
+                title: document.getElementById('event-title').value,
+                date: document.getElementById('event-date').value,
+                time: document.getElementById('event-time').value,
+                owner: document.getElementById('event-owner').value,
+                subtitle: document.getElementById('event-subtitle').value
+            };
+
+            let saved;
+            if (id) {
+                if (!agendaEditContext || !sameId(editingAgendaId, id)) throw new Error('Reabra a edição deste compromisso.');
+                saved = await saveFormEdit(agendaEditContext, patch, 'agenda-edit-warning');
+                showToast('Compromisso atualizado ✓');
+            } else {
+                saved = await store.saveRecord('agenda', { ...patch, createdBy: store.getLoggedUser(), confirmed: false }, { create: true });
+                showToast('Compromisso salvo ✓');
+            }
+
+            selectedDateStr = saved.date;
+            agendaEditContext = null;
+            editingAgendaId = null;
+            renderDateScroller();
+            renderAgendaView();
+            triggerHaptic(30);
+            closeAllModals(true);
+            target.reset();
         });
     });
 

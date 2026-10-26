@@ -1,39 +1,37 @@
+# STATUS — Nook
+
+**Última atualização:** 26/10/2026  
+**Baseline atual:** `Nook - 26 Out v4.zip`  
+**Estado:** MVP pessoal funcional. P0 de confiabilidade e rodadas P1/P1.1/P1.2/P1.3 implementadas; validação estática concluída; smoke test real P1/P2 ainda pendente.
+
 # Fase atual do produto
 
-Nook está em fase de **MVP pessoal funcional + hardening de confiabilidade do PWA/backend**.
+O Nook já cobre o ciclo principal de uso de um casal em um único PWA:
 
-O produto já possui os principais fluxos de uso do casal — autenticação, criação/entrada no Nook, onboarding, Home, listas, agenda, finanças, metas, memórias, recados, humor, tema e PWA — e o foco recente deixou de ser adicionar telas para atacar riscos de sincronização, troca de sessão e integridade de dados.
+- autenticação;
+- criação do Nook;
+- entrada do parceiro por convite;
+- onboarding;
+- Home;
+- humor;
+- listas;
+- agenda;
+- finanças;
+- metas;
+- memórias;
+- mural de recados;
+- ajustes/tema;
+- PWA com app shell em cache.
 
-A prioridade declarada é deixar o **PWA perfeito e confiável para uso pessoal** antes de pensar em Android/iOS ou ampliar escopo.
+As últimas rodadas completaram os fluxos essenciais dos módulos existentes. O foco imediato não deve ser abrir novas áreas do produto, e sim **validar a baseline v4 em uso real com duas contas/dispositivos** e corrigir qualquer regressão observada antes de avançar para features de conveniência.
 
-Este STATUS corresponde ao snapshot `Nook - 20 Out.zip` analisado em **24/10/2026** e ao contexto da sessão de desenvolvimento de 20–21/10/2026.
+Prioridade:
 
-# O que foi concluído recentemente
+> manter o Nook pequeno, íntimo e simples, mas confiável o suficiente para o uso diário do casal.
 
-- A arquitetura do frontend foi mantida simples: HTML/CSS/JS modular sem framework.
-- `js/store.js` foi endurecido para evitar contaminação de estado entre sessões/casais:
-  - `resetData()` limpa perfil, `couple_id`, usuário, coleções, finanças, humor e assinatura Realtime;
-  - `_generation` invalida respostas assíncronas antigas depois de logout/troca de contexto;
-  - `fetchProfile()` foi consolidado em uma consulta com `.or(...)` para localizar `p1_email` ou `p2_email`;
-  - leituras descartam respostas se geração/revisão/casal já mudaram;
-  - mutações em fila confirmam novamente a geração e o `couple_id` antes de gravar.
-- Foi adicionada serialização de mutações por entidade via `_serialized(...)`.
-- Edições e exclusões passaram a depender de `nook_version`, reduzindo risco de lost update entre os dois usuários/dispositivos.
-- `captureEdit()` / `saveEdit()` protegem formulários abertos contra sobrescrita de registro alterado no meio da edição.
-- O frontend atualiza o estado local somente depois que o Supabase confirma a escrita.
-- Realtime foi consolidado com debounce de aproximadamente 300 ms e refetch apenas das tabelas marcadas como alteradas.
-- Foi adicionado refresh quando a assinatura Realtime volta a `SUBSCRIBED`, quando o navegador volta para foreground e quando a conexão retorna.
-- Logout limpa o estado compartilhado e recarrega a aplicação.
-- `rules.js` contém validações defensivas para valores, datas, finanças, itens de lista e histórico de metas.
-- Itens/históricos inválidos são isolados sem perda silenciosa do valor bruto.
-- O Service Worker está na versão de cache `nook-v1.07` e não intercepta endpoints de Auth/Data API/Realtime do Supabase.
-- Na sessão anterior foi preparado/reconstruído o backend Supabase com as tabelas esperadas, RLS, versionamento, RPCs `nook_join` e `nook_set_mood`, Storage e Realtime. Esse SQL não está incluído no ZIP atual, portanto o estado implantado do banco não pode ser comprovado apenas por este snapshot.
-- Na revisão atual, todos os arquivos JavaScript do snapshot passaram em `node --check` sem erro de sintaxe.
-- Não foram encontrados IDs HTML duplicados em `index.html`.
+# Baseline técnica atual
 
-# Estado exato do código
-
-## Frontend presente no snapshot
+## Frontend
 
 Arquivos principais:
 
@@ -54,23 +52,20 @@ Arquivos principais:
 - `js/modules/finances.js`
 - `js/modules/settings.js`
 
-Não há `package.json`, framework, toolchain ou suíte de testes automatizados neste snapshot.
+Arquitetura atual:
 
-## Estado funcional esperado
+- HTML/CSS/JavaScript ES Modules;
+- sem framework;
+- sem bundler;
+- sem `package.json`;
+- sem state manager externo;
+- sem suíte automatizada de testes.
 
-O boot atual segue:
+## Backend
 
-```text
-sessão
-→ perfil
-→ criar/entrar no Nook se necessário
-→ aprovação
-→ carregamento dos dados
-→ onboarding se perfil incompleto
-→ Home + módulos
-```
+`setup.sql` na raiz continua sendo a baseline versionada do contrato Supabase.
 
-O frontend espera estas tabelas no Supabase:
+Tabelas esperadas:
 
 - `profiles`
 - `finances`
@@ -82,144 +77,321 @@ O frontend espera estas tabelas no Supabase:
 - `memories`
 - `notes`
 
-E estas RPCs:
+RPCs:
 
-- `nook_join`
-- `nook_set_mood`
+- `nook_join(text)`
+- `nook_set_mood(text, date)`
 
-Os registros editáveis esperam a coluna/trigger de `nook_version` no banco.
+Infraestrutura relevante:
 
-## Ponto aberto mais importante: Storage de fotos
+- RLS por `couple_id`;
+- `nook_version` para registros editáveis/versionados;
+- Realtime;
+- bucket privado `photos`;
+- paths de Storage iniciados por `couple_id`.
 
-Existe uma inconsistência entre o hardening de backend definido na sessão anterior e o código deste snapshot.
+# Rodadas concluídas
 
-O backend planejado/recriado adotou bucket `photos` privado com policies baseadas em caminho por casal, no formato aproximado:
+## P0 — confiabilidade
+
+Concluído:
+
+- whitelist única das reações do mural: `❤️`, `😘`, `☕`;
+- comportamento correto de **Limpar concluídas**;
+- Storage de fotos privado e alinhado ao `setup.sql`;
+- banco persiste storage path, não URL pública/signed URL;
+- helpers de fotos centralizados no store;
+- signed URLs temporárias com cache em memória;
+- compatibilidade de leitura com URLs antigas `http://`/`https://`;
+- resumo financeiro mensal separado do indicador global **A pagar**;
+- fetch inicial duplicado de perfil removido;
+- primeiro `SUBSCRIBED` do Realtime não dispara refetch redundante;
+- dependências CDN fixadas;
+- backend versionado em `setup.sql`.
+
+## P1 — navegação, confirmações, CSS e loading
+
+Concluído:
+
+- bottom navigation com 5 itens: Início, Listas, Agenda, Finanças e Metas;
+- Ajustes fora da bottom bar e acessível pela Home;
+- bottom sheet reutilizável para confirmações;
+- renomear lista sem `prompt()`;
+- exclusões principais sem `confirm()` nativo;
+- toast para feedback não bloqueante;
+- mood/roleta sem `alert()`;
+- redução de estilos inline estáticos;
+- skeletons de Home, Memórias, Finanças e Agenda;
+- loading sem timer artificial;
+- suporte a `prefers-reduced-motion`.
+
+## P1.1 — convite, mood e mural
+
+Concluído:
+
+- `alert() = 0`, `confirm() = 0`, `prompt() = 0` na experiência normal;
+- descarte de formulário não salvo usa confirmação visual;
+- `approved` representa conexão do segundo membro, não aprovação administrativa;
+- tela **Aguardando seu parceiro**;
+- copiar e compartilhar convite com `navigator.share()` + fallback clipboard;
+- `AbortError` de share tratado como cancelamento normal;
+- Ajustes mostra **Parceiro conectado ✓** após o join;
+- próprio mood mostra **Toque para alterar**;
+- mood do parceiro é read-only;
+- recados suportam 24h, 3 dias, 7 dias e **Até eu remover**;
+- recado permanente persiste `expires_at = null`;
+- autor pode editar texto/duração do próprio recado;
+- edição de recado usa `captureEdit()` + `saveFormEdit()`.
+
+## P1.2 — Memórias, Listas, Agenda e Finanças
+
+Concluído:
+
+### Memórias
+
+- viewer com foto maior, data, título, nota, editar e excluir;
+- grid usa `<img loading="lazy" decoding="async">`;
+- fotos novas passam por compressão central em `store.uploadPhoto()`;
+- maior lado limitado a 1600 px;
+- JPEG/PNG/WebP são convertidos para WebP qualidade 0,82;
+- GIF permanece original para preservar animação;
+- fotos antigas continuam compatíveis;
+- nenhum novo fetch é necessário para abrir viewer.
+
+### Listas
+
+- pendentes e concluídas aparecem em seções separadas;
+- concluídas começam recolhidas;
+- estado expandido é apenas local de UI;
+- contadores acompanham filtros;
+- marcar/desmarcar move item entre seções;
+- renomear continua usando bottom sheet;
+- não existe campo `archived` novo.
+
+### Agenda
+
+- compromisso pode ser editado pelo mesmo formulário de criação;
+- edição usa `captureEdit()` + `saveFormEdit()`;
+- campos editáveis: título, data, hora, responsável e subtítulo;
+- data selecionada é preservada ao abrir novo compromisso;
+- `created_by` permite mostrar **Criado por você / Criado por X**;
+- parceiro pode marcar **Ciente**;
+- criador não precisa confirmar o próprio compromisso;
+- `confirmed = true` representa **Ambos cientes**.
+
+### Finanças
+
+- despesas pendentes mostram status temporal: hoje, amanhã, em N dias ou atrasada;
+- despesas pagas não recebem status de atraso;
+- cálculo de vencimento usa regra pura por data;
+- acerto financeiro usa o mês selecionado e os nomes reais do casal;
+- copy do acerto foi humanizada sem criar um segundo cálculo;
+- `financialSummary().balance` continua sendo a fonte da matemática.
+
+## P1.3 — Metas e polimento de UX
+
+Concluído:
+
+### Metas
+
+- editar meta pelo mesmo formulário de criação;
+- edição preserva `current`, `history`, identidade e `nook_version`;
+- tipo da meta não é alterado durante edição;
+- campos editáveis: título, ícone, responsável, alvo, prazo e unidade quando aplicável;
+- conclusão é derivada exclusivamente de `current >= target`;
+- não existe coluna/flag `completed`;
+- cards concluídos mostram **Concluída 🎉**;
+- CTA de progresso some quando a meta está concluída;
+- histórico, editar, excluir e undo continuam disponíveis;
+- metas ativas e concluídas ficam em seções separadas;
+- concluídas ficam recolhidas por padrão;
+- undo remove o último item do histórico e recalcula `current` pelo histórico restante;
+- meta pode voltar de concluída para ativa após undo ou edição do target;
+- criação financeira com valor inicial registra esse valor também no histórico.
+
+### Convenções internas
+
+Constantes de domínio atuais em `rules.js`:
 
 ```text
-<COUPLE_UUID>/avatars/...
-<COUPLE_UUID>/covers/...
-<COUPLE_UUID>/memories/...
+OWNER.P1 = 'IS'
+OWNER.P2 = 'VO'
+OWNER.COUPLE = 'Casal'
+
+GOAL_TYPE.FINANCIAL = 'financial'
+GOAL_TYPE.HABIT = 'habit'
 ```
 
-Porém o frontend atual ainda faz upload assim:
+Os valores persistidos não foram migrados.
+
+### UX transversal
+
+- `runAction()` continua protegendo contra double submit;
+- erros conhecidos recebem mensagens humanas via `humanizeError()`;
+- erros técnicos continuam visíveis no console;
+- formulários alterados permanecem abertos se a gravação falhar;
+- autofocus é opt-in via `data-autofocus` e só dispara automaticamente em pointer fino/desktop;
+- haptics foram reduzidos a ações mais significativas;
+- `prefers-reduced-motion` agora também reduz transições/animações gerais;
+- empty states alterados usam CTA contextual único quando aplicável.
+
+# Estado atual do Service Worker
+
+Cache atual:
 
 ```text
-avatars/<arquivo>
-covers/<arquivo>
-memories/<arquivo>
+nook-v1.13
 ```
 
-E depois chama `getPublicUrl(...)`.
+Dependências externas sincronizadas entre `index.html` e `sw.js`:
 
-Isso precisa ser reconciliado. Se o bucket implantado estiver privado e as policies exigirem o prefixo do `couple_id`, os uploads atuais podem falhar e `getPublicUrl` não é um mecanismo válido para exibir conteúdo privado.
+```text
+Supabase JS: 2.118.0
+Phosphor Web: 2.1.2
+```
 
-Arquivos afetados:
+O Service Worker continua responsável apenas pelo app shell/assets estáticos. Não existe fila offline de mutações.
 
-- `js/modules/onboarding.js`
-- `js/modules/home.js`
-- possivelmente `js/utils.js`/`js/store.js` para criar um helper central de Storage.
+# Validação feita sobre a v4
 
-## Backend não versionado no ZIP
+## Checagens estáticas
 
-O frontend contém mensagens que orientam consultar `INSTRUCOES.md`, mas esse arquivo não existe no snapshot. Também não existe um arquivo SQL com o schema/RLS/RPCs/triggers/Storage policies.
+Executadas sobre `Nook - 26 Out v4.zip`:
 
-Consequência: uma IA ou humano não consegue reconstruir o backend somente a partir do repositório atual.
+- todos os arquivos JS e `sw.js` passam em `node --check`;
+- nenhum ID duplicado em `index.html`;
+- bottom bar possui exatamente 5 destinos;
+- `alert()`, `confirm()` e `prompt()` não aparecem nos fluxos da aplicação;
+- versões Supabase/Phosphor estão sincronizadas entre HTML e Service Worker;
+- v4 é byte a byte igual ao snapshot esperado da rodada P1.3;
+- regressão curta confirmou viewer/lazy/compressão, Listas, Agenda, Finanças, convite, mood, mural e Storage privado.
 
-## Segurança e isolamento
+## Regras de Metas testadas isoladamente
 
-O frontend aplica filtros por `couple_id` e protege mudanças de contexto, mas o isolamento real depende das policies RLS do Supabase.
+Casos exercitados:
 
-A subscription Realtime escuta mudanças do schema `public` e descarta no cliente eventos cujo `couple_id` não corresponde ao atual. Esse filtro é útil para lógica de UI, mas não pode ser considerado uma barreira de segurança; o backend precisa garantir que o cliente só receba dados autorizados.
+```text
+financeira: 350 → undo → 100
+hábito: 3 → undo → 2
+0,10 + 0,20 + 0,35 = 0,65
+```
 
-A URL e a publishable key do Supabase estão hardcoded em `js/store.js`. Uma publishable key pode estar no cliente, mas ela só é segura se RLS/Storage policies estiverem corretas.
+Também foi verificado que a edição versionada envia apenas os campos editáveis e preserva `current/history` no registro original.
 
-## Outros pontos ainda não comprovados
+# O que ainda precisa de validação real
 
-- O snapshot foi validado estaticamente, mas não há evidência nesta sessão de um smoke test completo contra o Supabase real após o reset/reconstrução.
-- Não foi validado em dois usuários/dispositivos simultaneamente neste snapshot.
-- Não foi validado o comportamento real após queda de internet/background/reconexão.
-- Não há testes automatizados para `rules.js` ou para o contrato do `store`.
-- Fotos não são comprimidas antes do upload.
-- O app shell tem cache offline, mas os dados não possuem fila/reconciliação offline; isso é intencional por enquanto.
+A validação estática não substitui uso contra o Supabase implantado.
+
+Smoke test prioritário:
+
+```text
+P1 cria Nook
+→ compartilha convite
+→ P2 entra
+→ onboarding
+→ avatar/capa/memória com foto
+→ viewer de memória
+→ recado temporário e permanente
+→ edição do próprio recado
+→ mood P1/P2
+→ lista com pendentes/concluídos
+→ agenda criada/editada + Ciente
+→ finanças com vencimentos/acerto
+→ meta financeira e hábito
+→ editar meta
+→ concluir meta
+→ undo de meta
+→ reload
+→ Realtime entre dois clientes
+→ logout/login cruzado no mesmo navegador
+```
+
+Também validar:
+
+- perda de rede e reconexão;
+- retorno de background;
+- conflito de edição em duas janelas;
+- Storage privado entre P1/P2 do mesmo casal;
+- acesso negado entre casais diferentes;
+- cache `nook-v1.13` após deploy.
+
+# Riscos abertos
+
+## 1. Autoria de recado não possui identificador estável
+
+`notes` ainda não possui `created_by`.
+
+A UI compara `note.owner` com `store.getAuthorName()` para decidir se mostra edição.
+
+Isso é suficiente para o MVP pessoal, mas não é autorização forte.
+
+Se autoria forte virar requisito, a correção deve ser no schema/policy com identificador estável; não adicionar mais lógica baseada em nome no frontend.
+
+## 2. Compromissos legados podem não ter `created_by`
+
+Eventos novos persistem `created_by = p1/p2`.
+
+Eventos anteriores ao campo/fluxo podem não permitir identificar o criador. A UI não deve inventar autoria retroativa.
+
+## 3. Sem suíte automatizada
+
+`rules.js` já contém várias regras puras e é o melhor primeiro candidato para testes automatizados leves:
+
+- datas;
+- centavos;
+- `financialSummary`;
+- `financeShare`;
+- `expenseDueStatus`;
+- `goalProgress`;
+- `goalForecast`;
+- `undoLastGoalProgress`;
+- normalização de listas/histórico.
+
+## 4. Offline é app shell, não offline-first
+
+Dados e gravações continuam dependentes do Supabase.
+
+Isso é decisão consciente de simplicidade.
+
+## 5. `store.js` concentra responsabilidades
+
+Ainda é aceitável para o tamanho atual. Não dividir preventivamente.
+
+## 6. Renderização de Listas ainda cria DOM para todas as listas
+
+A v4 continua renderizando itens de todas as listas e escondendo os que não pertencem à lista ativa.
+
+Não foi encontrada evidência objetiva de problema no volume atual. O P2 de renderizar somente a lista ativa permanece adiado.
 
 # Próxima tarefa imediata
 
-**Primeira tarefa da próxima sessão: alinhar o contrato de Supabase Storage antes de adicionar qualquer nova feature.**
+**Não iniciar uma grande feature antes do smoke test completo de duas contas.**
 
-A sequência deve ser:
+Ordem recomendada:
 
-1. Confirmar no Supabase que o bucket `photos` está privado e que as policies implantadas exigem o primeiro segmento do path como `couple_id`.
-2. Centralizar a geração de path de upload, evitando strings independentes nos módulos. O contrato deve ser:
-
-```text
-${store.requireCouple()}/avatars/<uuid>.<ext>
-${store.requireCouple()}/covers/<uuid>.<ext>
-${store.requireCouple()}/memories/<uuid>.<ext>
-```
-
-3. Remover a suposição de URL pública permanente (`getPublicUrl`) se o bucket for privado.
-4. Definir e implementar um único modelo para fotos privadas:
-   - persistir o **storage path** no banco;
-   - resolver esse path para uma URL temporária/autorizada apenas na leitura;
-   - não persistir signed URL expirada como dado definitivo.
-5. Adaptar `onboarding.js` e `home.js` para usar o helper comum.
-6. Executar o primeiro smoke test obrigatório:
-
-```text
-login P1
-→ abrir Nook aprovado
-→ upload avatar
-→ upload capa
-→ criar memória com foto
-→ reload
-→ confirmar que todas as imagens continuam visíveis
-→ login P2
-→ confirmar que P2 vê as imagens do mesmo couple_id
-→ confirmar que outro usuário/casal não consegue ler o path
-```
-
-Só depois desse teste seguir para novos recursos.
-
-# Blockers e dependências pendentes
-
-- **Schema/backend não versionado no repositório.** O SQL usado para reconstruir o Supabase precisa ser salvo no projeto para que o ambiente seja reproduzível.
-- **Contrato de Storage possivelmente incompatível com o frontend atual.** É o blocker técnico mais direto encontrado no snapshot.
-- **Estado real das policies/RPCs no Supabase não pode ser inferido pelo ZIP.** O frontend depende de `nook_join`, `nook_set_mood`, RLS e `nook_version`.
-- **`INSTRUCOES.md` ausente.** `store.js` referencia esse documento em mensagens de erro.
-- **Validação pós-reset não comprovada.** Ainda falta executar uma bateria real de login → hidratação → CRUD → reload → realtime em duas contas.
-- **Sem testes automatizados.** Não bloqueia o uso pessoal, mas aumenta o risco ao continuar mexendo em `store.js`/`rules.js`.
-- **Sem ambiente/configuração separada.** URL e chave publishable estão diretamente em `store.js`.
-
-# Decisões tomadas na última sessão
-
-- Manter o Nook como **PWA primeiro**; Android/iOS ficam para depois.
-- Manter a solução simples e sem framework enquanto o tamanho atual permitir.
-- Tratar o Supabase como fonte de verdade dos dados compartilhados.
-- Não persistir carteira/estado do casal em `localStorage`; apenas o tema permanece local.
-- Priorizar segurança de contexto: logout/troca de usuário deve invalidar respostas e operações antigas.
-- Preferir mutações confirmadas pelo banco a optimistic updates cegos.
-- Usar `nook_version` para proteger edições/exclusões concorrentes.
-- Recarregar dados após reconexão/foreground em vez de assumir que Realtime permaneceu perfeito durante suspensão.
-- Isolar dados estruturalmente por `couple_id` e exigir que RLS seja a barreira de segurança real.
-- O backend de fotos foi direcionado para Storage privado e paths vinculados ao casal; o frontend ainda precisa terminar essa migração.
-- O Service Worker deve cachear apenas o app shell/dependências estáticas, nunca Auth/Data API/Realtime.
-- Toda alteração relevante de assets estáticos deve aumentar a versão do cache para evitar mistura de código antigo e novo.
+1. publicar/aplicar a baseline v4;
+2. confirmar `nook-v1.13` em Cache Storage;
+3. rodar o smoke test P1/P2;
+4. registrar regressões reais;
+5. corrigir regressões antes de ampliar o produto;
+6. depois escolher o próximo item do `Nook-ROADMAP.md`.
 
 # Próximo milestone
 
-O próximo milestone é uma **V1 pessoal confiável em dois dispositivos**.
+## V1 pessoal confiável
 
-Critério de saída sugerido para esse milestone:
+Critério de saída:
 
-- P1 e P2 conseguem criar/entrar no mesmo Nook sem intervenção técnica durante o uso normal.
-- Onboarding e fotos funcionam com Storage privado.
-- Home, listas, agenda, finanças, metas, memórias, recados e humor persistem após reload.
-- Alterações feitas por um usuário aparecem no outro sem corrupção ou sobrescrita silenciosa.
-- Conflitos de edição são recusados de forma compreensível.
-- Logout/login de outra conta no mesmo navegador não herda dados do casal anterior.
-- Voltar do background ou recuperar conexão reconcilia o estado corretamente.
-- RLS impede acesso cruzado entre casais.
-- O schema/RLS/RPCs/Storage policies estão versionados no repositório.
-- Existe uma bateria curta de smoke tests repetível antes de cada release.
+- P1 cria o Nook e convida P2 sem intervenção técnica;
+- onboarding e fotos privadas sobrevivem a reload;
+- dois membros veem o mesmo estado;
+- Realtime sincroniza mudanças relevantes;
+- edição versionada não sobrescreve conflito silenciosamente;
+- Listas/Agenda/Finanças/Metas/Memórias/Mural funcionam após reload;
+- logout/login não reaproveita dados do casal anterior;
+- reconexão/foreground reconciliam estado;
+- RLS/Storage bloqueiam leitura cruzada entre casais;
+- Service Worker não mistura versões;
+- existe uma bateria manual curta e repetível para releases.
 
-Depois de alcançar essa V1 pessoal estável, o produto pode voltar a priorizar novas funcionalidades ou preparação para distribuição mais ampla.
+Depois desse milestone, o Nook pode voltar a priorizar conveniência e frequência de uso.

@@ -1,2102 +1,11 @@
 # ROADMAP — Nook
 
-> Roadmap de produto e engenharia atualizado para o snapshot `Nook - 25 Out.zip` e a rodada P0 de 25/10/2026.
->
-> Princípio central: **aumentar valor percebido sem transformar o Nook em um ERP de casal**. A simplicidade é parte do produto, não apenas uma restrição técnica.
+**Atualizado em:** 26/10/2026  
+**Baseline:** `Nook - 26 Out v4` — pós-P1.3 (Metas + polimento de UX)
 
----
+# 1. Visão de produto
 
-# 1. Visão de produto para orientar o roadmap
-
-O Nook funciona melhor quando é entendido como **o pequeno espaço compartilhado do casal para organizar o cotidiano e preservar a vida a dois**.
-
-Ele já combina quatro necessidades que normalmente ficam espalhadas em vários apps:
-
-1. **Organização prática** — listas, agenda e contas.
-2. **Coordenação do casal** — responsáveis, confirmações, divisão financeira e decisões compartilhadas.
-3. **Conexão emocional** — humor e mural de recados.
-4. **História do casal** — metas, memórias e cápsula do tempo.
-
-O roadmap deve aprofundar essas quatro camadas sem adicionar novas áreas de navegação sempre que surgir uma ideia nova.
-
-## North Star do produto
-
-Abrir o Nook e, em menos de 10 segundos, responder:
-
-- Como estamos hoje?
-- O que precisamos resolver hoje?
-- Tem alguma conta ou compromisso que merece atenção?
-- Há algo do meu parceiro que eu deveria ver?
-- Como estão nossos planos e nossa história?
-
-Se uma funcionalidade não ajuda uma dessas perguntas, provavelmente não é prioridade.
-
----
-
-# 2. Regras de simplicidade
-
-Estas regras devem ser usadas para aceitar ou rejeitar features futuras.
-
-## Regra 1 — Não criar módulo quando uma feature cabe em um módulo existente
-
-Exemplos:
-
-- Rotina doméstica → Lista.
-- Date night → Lista de decisão.
-- Contas recorrentes → Finanças.
-- Viagem futura → Meta + Lista + Agenda.
-- Hábito do casal → Meta.
-- Lembrete romântico → Recado ou Agenda.
-
-## Regra 2 — Preferir ações manuais simples a automações complexas
-
-Exemplo: antes de desenvolver um mecanismo de recorrência mensal completo para despesas, oferecer **“Duplicar para o próximo mês”**.
-
-Isso resolve 80% do problema com muito menos risco.
-
-## Regra 3 — Uma ação frequente deve exigir no máximo 1–2 interações
-
-Adicionar tarefa, conta, compromisso, reação ou progresso de meta precisa continuar extremamente rápido.
-
-## Regra 4 — Progressive disclosure
-
-A tela inicial não precisa mostrar tudo. Deve mostrar o que merece atenção agora e oferecer “Ver tudo” quando necessário.
-
-## Regra 5 — Segurança e confiabilidade vencem feature nova
-
-Fotos privadas, dados financeiros, isolamento por casal e conflitos de edição precisam estar corretos antes de aumentar o escopo.
-
-## Regra 6 — Não migrar de stack sem uma dor concreta
-
-A arquitetura atual em HTML/CSS/JavaScript modular é adequada para o tamanho do Nook.
-
-**Não recomendo migrar para React/Next/Vue apenas por modernização.**
-
-## Regra 7 — Evitar dependências
-
-Sempre que algo puder ser resolvido com APIs nativas do browser ou poucas linhas de JavaScript, preferir isso a instalar uma biblioteca.
-
----
-
-# 3. Diagnóstico atual
-
-## O que está bom e deve ser preservado
-
-- JavaScript separado por módulos funcionais.
-- Regras puras concentradas em `rules.js`.
-- Estado e acesso ao Supabase concentrados em `store.js`.
-- Proteções contra resposta assíncrona obsoleta.
-- Serialização de alterações concorrentes.
-- `nook_version` para evitar sobrescritas cegas.
-- Realtime entre as duas pessoas.
-- Revalidação ao voltar do background ou recuperar conexão.
-- PWA extremamente leve.
-- Feedback háptico e microinterações.
-- Personalidade visual própria.
-- Módulo de decisão dentro de Listas em vez de criar outra área.
-- Cálculos financeiros isolados em regras puras.
-- Boa preocupação com dados inválidos e preservação de conteúdo original.
-
-## Principais limitações atuais
-
-### Produto/UI
-
-- A Home contém muitas seções completas e pode começar a parecer feed/dashboard longo.
-- A barra inferior possui 6 destinos; é muita coisa para uma navegação mobile primária.
-- Configurações ocupam espaço equivalente a módulos usados diariamente.
-- Vários fluxos ainda usam `alert`, `confirm` e `prompt`, quebrando a identidade visual.
-- Há estilos inline em HTML gerado por JavaScript.
-- Algumas telas têm excelente empty state; outras ainda são mais funcionais que refinadas.
-
-### Funcionalidades
-
-- Agenda permite criar e excluir, mas não editar compromisso.
-- Metas permitem criar/progredir/excluir, mas não editar configuração.
-- Não existe desfazer um depósito ou incremento de meta.
-- Finanças não oferecem uma forma simples de repetir uma conta mensal.
-- Home mostra a linha do tempo completa, o que perde escalabilidade conforme as memórias crescem.
-- Mural não permite “até eu remover”.
-
-### Correções P0 concluídas em 25/10/2026
-
-- Mural alinhado em uma fonte única de reações: `❤️`, `😘`, `☕`.
-- “Remover concluídas” virou **Limpar concluídas**, com bottom sheet e copy de exclusão definitiva.
-- Resumo financeiro mensal passou a considerar somente despesas do mês selecionado; “A pagar” permanece um conceito global separado.
-- Boot inicial removeu o segundo `fetchProfile()` e evita refresh redundante no primeiro `SUBSCRIBED`.
-- Fotos passaram a usar bucket privado, path iniciado por `couple_id`, signed URL temporária e cache em memória.
-- Operações comuns de fotos foram centralizadas em `store.js`.
-- `setup.sql` está versionado na raiz como baseline do backend.
-- Dependências CDN relevantes estão fixadas em versões explícitas.
-- Service Worker avançou para `nook-v1.08`.
-
-### Infraestrutura ainda pendente/para validar
-
-- Executar smoke test completo contra o Supabase real, especialmente Auth/RLS/Storage/Realtime em P1/P2.
-- Migrar URLs antigas de fotos somente se o uso real justificar; compatibilidade de leitura permanece ativa.
-- Corrigir mensagens antigas que ainda citam `INSTRUCOES.md`.
-- Não há testes automatizados das regras de negócio.
-- Compressão client-side de imagens continua fora do P0.
-
----
-
-# 4. Prioridades
-
-Legenda:
-
-- **P0** — corrigir antes de ampliar funcionalidades.
-- **P1** — alto impacto / baixa ou média complexidade.
-- **P2** — bom valor, depois da experiência principal estar sólida.
-- **P3** — somente após uso real comprovar necessidade.
-
-Complexidade:
-
-- **S** — pequena.
-- **M** — média.
-- **L** — grande.
-
----
-
-# 5. Fase 0 — Confiabilidade antes de novas features
-
-Objetivo: eliminar inconsistências e deixar frontend + Supabase alinhados.
-
-## P0.1 — Corrigir reações do mural
-
-**Status:** ✅ Concluído na rodada de 25/10/2026.
-
-**Complexidade:** S
-
-Implementado com uma única fonte de verdade em `rules.js`:
-
-- ❤️
-- 😘
-- ☕
-
-A rodada não criou contagem por usuário, toggle nem tabela separada de reações.
-
-### Critério de pronto
-
-Toda reação disponível na UI deve ser aceita pelo `store` e sincronizada entre as duas pessoas.
-
----
-
-## P0.2 — Corrigir “Remover concluídas”
-
-**Status:** ✅ Concluído na rodada de 25/10/2026.
-
-**Complexidade:** S
-
-Implementado sem criar archive/arquivo morto.
-
-A ação agora usa copy de exclusão definitiva, por exemplo:
-
-> Excluir 4 itens concluídos? Esta ação não poderá ser desfeita.
-
-E o botão passou a ser:
-
-> Limpar concluídas
-
-A confirmação usa bottom sheet e revalida a quantidade antes de excluir.
-
----
-
-## P0.3 — Tornar fotos realmente privadas
-
-**Status:** ✅ Concluído na rodada de 25/10/2026.
-
-**Complexidade:** M
-
-Implementado com bucket `photos` privado e paths:
-
-```text
-<couple_id>/avatars/...
-<couple_id>/covers/...
-<couple_id>/memories/...
-```
-
-Salvar no banco **o path do arquivo**, não uma URL pública ou signed URL temporária.
-
-Ao renderizar:
-
-- gerar signed URL;
-- mantê-la em cache apenas na sessão;
-- renovar quando necessário.
-
-### Também fazer
-
-- Excluir arquivo antigo ao substituir avatar/capa quando seguro.
-- Excluir a foto associada ao apagar uma memória.
-- Configurar limite de tamanho e MIME no bucket além da validação de frontend.
-
-### Não fazer
-
-- Criar CDN própria.
-- Criar serviço de imagens separado.
-- Adicionar biblioteca de upload.
-
----
-
-## P0.4 — Centralizar operações de fotos
-
-**Status:** ✅ Concluído na rodada de 25/10/2026.
-
-**Complexidade:** S/M
-
-Avatar, capa e memória agora reutilizam helpers pequenos centralizados em `store.js`:
-
-```text
-uploadPhoto(folder, file)
-resolvePhotoUrl(path)
-deletePhoto(path)
-```
-
-A implementação ficou em `store.js`, sem criar arquitetura de services.
-
----
-
-## P0.5 — Versionar o backend
-
-**Status:** ✅ Concluído na rodada de 25/10/2026.
-
-**Complexidade:** S
-
-Baseline implementada como:
-
-```text
-setup.sql
-```
-
-Ele contém:
-
-- tabelas;
-- índices;
-- RLS;
-- policies;
-- triggers de `nook_version`;
-- RPC `nook_join`;
-- RPC `nook_set_mood`;
-- Realtime;
-- bucket e policies de Storage.
-
-Para o tamanho atual, **um baseline SQL único continua mais simples que uma estrutura sofisticada de migrations**. Para evoluções incompatíveis futuras, adicionar SQL explícito de alteração/migração em vez de confiar em `CREATE TABLE IF NOT EXISTS`.
-
----
-
-## P0.6 — Corrigir semântica do resumo financeiro mensal
-
-**Status:** ✅ Concluído na rodada de 25/10/2026.
-
-**Complexidade:** S/M
-
-Implementado separando claramente:
-
-### A pagar
-
-Todas as despesas pendentes relevantes, independentemente do mês selecionado.
-
-### Resumo do mês selecionado
-
-Somente despesas cuja data pertence ao mês selecionado.
-
-O gráfico por categoria usa o segundo conjunto.
-
-Isso evita que uma conta pendente de outro mês distorça o gráfico atual.
-
----
-
-## P0.7 — Remover consulta duplicada de perfil
-
-**Status:** ✅ Concluído na rodada de 25/10/2026.
-
-**Complexidade:** S
-
-Antes da correção, `routeApp()` fazia `fetchProfile()` e `store.init()` repetia a leitura.
-
-Agora o fluxo inicial faz uma única leitura de perfil; o primeiro `SUBSCRIBED` também não dispara uma hidratação redundante. Não foi criado cache global complexo.
-
----
-
-## P0.8 — Fixar versões externas
-
-**Status:** ✅ Concluído na rodada de 25/10/2026.
-
-**Complexidade:** S
-
-Dependências CDN relevantes foram fixadas em versões explícitas:
-
-- Supabase JS `2.118.0`;
-- Phosphor Icons Web `2.1.2`;
-- mobile-drag-drop `2.3.0-rc.2`;
-- canvas-confetti `1.6.0`.
-
-Objetivo preservado: deploy reproduzível e menos surpresas de runtime.
-
----
-
-# 6. Fase 1 — Simplificação visual e experiência principal
-
-Esta é a fase que provavelmente produzirá o maior salto percebido no Nook.
-
-## P1.1 — Redesenhar a Home para “Hoje primeiro”
-
-**Complexidade:** M
-
-A Home atual tenta mostrar muita coisa completa.
-
-Nova hierarquia sugerida:
-
-### Bloco 1 — Identidade
-
-Hero um pouco mais compacto:
-
-- foto/capa;
-- nomes/avatares;
-- saudação;
-- tempo juntos.
-
-### Bloco 2 — Como estamos
-
-Manter os dois moods.
-
-### Bloco 3 — Hoje
-
-Um único card/resumo com:
-
-- próximo compromisso;
-- quantidade de tarefas pendentes;
-- contas vencendo/atrasadas;
-- ação prioritária.
-
-Exemplo:
-
-```text
-Hoje
-18:30 • Jantar com Ana
-3 tarefas pendentes
-1 conta vence hoje
-```
-
-Cada linha leva ao módulo correspondente.
-
-### Bloco 4 — Recado
-
-Mostrar apenas o recado mais recente ou no máximo 2.
-
-Botão:
-
-> Ver mural
-
-### Bloco 5 — Nós
-
-Mostrar:
-
-- cápsula do tempo, quando existir;
-- 2–3 memórias recentes;
-- CTA “Ver nossa linha do tempo”.
-
-### Resultado
-
-A Home deixa de ser “todos os módulos empilhados” e passa a ser **um resumo inteligente da vida do casal**.
-
----
-
-## P1.2 — Reduzir navegação inferior para 5 itens
-
-**Complexidade:** S
-
-Sugestão:
-
-```text
-Início | Listas | Agenda | Finanças | Metas
-```
-
-Retirar `Ajustes` da bottom bar.
-
-Acessar Ajustes por um ícone discreto no topo da Home.
-
-Isso preserva todas as funcionalidades e reduz ruído.
-
----
-
-## P1.3 — Padronizar ações destrutivas e confirmações
-
-**Complexidade:** M
-
-Substituir gradualmente:
-
-- `alert()`;
-- `confirm()`;
-- `prompt()`.
-
-Por bottom sheets e toasts já compatíveis com a linguagem visual do Nook.
-
-Prioridade:
-
-1. Renomear lista.
-2. Excluir lista.
-3. Excluir memória.
-4. Excluir meta.
-5. Excluir conta.
-6. Alertas de mood/roleta.
-
-Não precisa criar um framework de modal. Reutilizar `bottom-sheet` existente.
-
----
-
-## P1.4 — Tirar estilos inline do JavaScript
-
-**Complexidade:** S/M
-
-Há várias estruturas HTML geradas com CSS inline.
-
-Mover para classes em `style.css`.
-
-Benefícios:
-
-- dark mode mais previsível;
-- visual consistente;
-- HTML gerado mais legível;
-- manutenção mais fácil.
-
----
-
-## P1.5 — Criar hierarquia consistente de cards
-
-**Complexidade:** S
-
-Definir apenas três padrões:
-
-### Card principal
-
-Informação importante e clicável.
-
-### Row card
-
-Listas, contas e compromissos.
-
-### Highlight card
-
-Cápsula, settlement financeiro e alertas.
-
-Evitar criar um estilo novo para cada feature.
-
----
-
-## P1.6 — Melhorar estados de loading
-
-**Complexidade:** S/M
-
-Hoje existe um estado global de carregamento.
-
-Adicionar skeleton apenas onde realmente melhora a experiência:
-
-- Home;
-- Lista de despesas;
-- Agenda;
-- Memórias.
-
-Não criar skeleton para cada botão ou modal.
-
----
-
-## P1.7 — Estado offline explícito
-
-**Complexidade:** S
-
-O service worker mantém o shell, mas os dados dependem do Supabase.
-
-Quando `navigator.onLine === false`:
-
-- mostrar um pequeno banner “Sem conexão”;
-- manter dados já carregados visíveis;
-- bloquear gravações com mensagem clara.
-
-**Não implementar fila offline de mutações agora.**
-
-É muito mais complexo do que o benefício atual.
-
----
-
-## P1.8 — Acessibilidade básica
-
-**Complexidade:** S
-
-- garantir alvos de toque de ~44px;
-- `aria-label` em botões apenas com ícone;
-- manter foco visível;
-- respeitar `prefers-reduced-motion`;
-- revisar contraste no dark mode;
-- evitar que informação dependa somente de cor.
-
----
-
-# 7. Módulo: Login, criação do Nook e onboarding
-
-## Estado atual
-
-Já há:
-
-- login;
-- cadastro;
-- criação do espaço;
-- entrada via código;
-- etapa de aprovação;
-- nomes;
-- data do relacionamento;
-- avatar por emoji ou foto.
-
-A base é suficiente.
-
-## P1 — Compartilhar convite nativamente
-
-**Complexidade:** S
-
-Além de copiar o código, usar `navigator.share()` quando disponível.
-
-Exemplo:
-
-> Vem pro nosso Nook 💛 Código: ABC123
-
-Fallback: copiar para clipboard.
-
----
-
-## P1 — Mostrar estado do convite
-
-**Complexidade:** S
-
-Em Ajustes:
-
-```text
-Parceiro conectado ✓
-```
-
-ou
-
-```text
-Esperando seu parceiro entrar
-[Compartilhar convite]
-```
-
-Isso reduz dúvida sem criar novo fluxo.
-
----
-
-## P2 — Simplificar aprovação
-
-Se o Nook passar a ser usado por pessoas fora do teste pessoal, reavaliar `approved=false` como fluxo padrão.
-
-Possível evolução:
-
-1. email confirmado;
-2. cria/entra no Nook;
-3. acesso liberado automaticamente.
-
-Manter aprovação manual somente se ela estiver cumprindo uma função real de beta fechado.
-
----
-
-## Não fazer agora
-
-- login social;
-- telefone/OTP;
-- múltiplos casais por conta;
-- perfis familiares;
-- permissões complexas.
-
----
-
-# 8. Módulo: Home
-
-A Home deve receber a maior parte do investimento de UI.
-
-## P1 — “Hoje” agregado
-
-Usar apenas dados que já existem:
-
-- próximo evento de hoje;
-- tarefas pendentes;
-- conta vencendo ou atrasada;
-- mood do casal.
-
-Nenhuma tabela nova.
-
----
-
-## P1 — Quick Add
-
-**Complexidade:** S/M
-
-Adicionar um único botão `+` na Home.
-
-Ao tocar:
-
-```text
-Adicionar...
-Tarefa
-Conta
-Compromisso
-Recado
-Memória
-```
-
-Cada opção abre o bottom sheet já existente.
-
-Isso melhora muito o uso diário sem duplicar lógica.
-
----
-
-## P1 — Preview em vez de feed completo
-
-Home:
-
-- 1–2 recados;
-- 3 memórias;
-- 1–3 eventos do dia.
-
-As telas especializadas mostram o resto.
-
----
-
-## P2 — Resumo da semana
-
-**Complexidade:** M
-
-Gerado dinamicamente a partir dos dados existentes.
-
-Exemplo:
-
-```text
-Nossa semana
-4 compromissos
-7 tarefas abertas
-R$ 820 em contas vencendo
-Meta Viagem: 62%
-```
-
-Nenhum dado novo precisa ser salvo.
-
----
-
-## P2 — “Uma coisa para nós”
-
-Card leve gerado a partir do que já existe.
-
-Exemplos:
-
-- “Vocês ainda não registraram uma memória este mês.”
-- “A meta Viagem chegou a 75% 🎉”
-- “Hoje faz 2 anos daquela memória…”
-
-Importante: usar regras determinísticas simples. **Não precisa IA.**
-
----
-
-# 9. Módulo: Humor
-
-## Manter simples
-
-O mood funciona bem justamente por ser instantâneo.
-
-## P1 — Permitir trocar o humor do próprio usuário
-
-O comportamento atual já suporta atualização; apenas deixar claro visualmente que tocar novamente altera.
-
----
-
-## P1 — Feedback do parceiro
-
-Quando o parceiro já marcou:
-
-- mostrar o mood;
-- manter card read-only;
-- evitar `alert()` ao tocar;
-- usar toast discreto.
-
----
-
-## P3 — Histórico de humor
-
-**Não recomendo agora.**
-
-Isso exigiria mudar a modelagem de `moods` de estado diário único para histórico, introduziria analytics e mudaria a natureza leve da feature.
-
-Só fazer se uso real mostrar valor.
-
----
-
-# 10. Módulo: Mural de recados
-
-## ✅ Concluído — Corrigir reações
-
-Concluído na Fase 0 em 25/10/2026.
-
----
-
-## P1 — Opção “Até eu remover”
-
-**Complexidade:** S
-
-O renderer já aceita nota sem expiração.
-
-Adicionar ao seletor:
-
-```text
-24 horas
-3 dias
-7 dias
-Até eu remover
-```
-
----
-
-## P1 — Mostrar apenas recados atuais na Home
-
-Já ocorre por expiração; complementar limitando quantidade mostrada.
-
----
-
-## P2 — Editar recado
-
-**Complexidade:** S/M
-
-Útil, mas menos prioritário que edição de agenda e metas.
-
-Se implementado, reutilizar `captureEdit/saveEdit`.
-
----
-
-## Não fazer agora
-
-- threads;
-- comentários;
-- chat;
-- anexos;
-- status de leitura;
-- notificação push.
-
-O mural é charmoso porque **não é um mensageiro**.
-
----
-
-# 11. Módulo: Memórias
-
-Este é um dos diferenciais emocionais mais fortes do Nook.
-
-## ✅ Concluído — Storage privado
-
-Concluído na Fase 0 em 25/10/2026; resta smoke test real do ambiente Supabase.
-
----
-
-## P1 — Timeline progressiva
-
-Home mostra apenas as últimas 3 memórias.
-
-Botão:
-
-> Ver todas as memórias
-
-Abrir bottom sheet ou uma subview simples com timeline completa.
-
-Não é necessário criar item novo na navegação principal.
-
----
-
-## P1 — Viewer de foto
-
-**Complexidade:** S
-
-Tocar na memória abre:
-
-- foto maior;
-- data;
-- título;
-- descrição;
-- editar;
-- excluir.
-
-A grid permanece limpa.
-
----
-
-## P1 — Lazy loading das imagens
-
-**Complexidade:** S/M
-
-Para memórias, preferir `<img loading="lazy">` com `object-fit: cover` em vez de usar todas como `background-image`.
-
-Benefícios:
-
-- browser controla carregamento;
-- melhor acessibilidade;
-- melhor performance conforme timeline cresce.
-
----
-
-## P1 — Compressão antes de upload
-
-**Complexidade:** M
-
-Sem biblioteca externa:
-
-1. carregar imagem em `Image`;
-2. limitar maior lado, por exemplo, a uma dimensão razoável para mobile;
-3. converter via Canvas para WebP/JPEG;
-4. fazer upload.
-
-Isso reduz armazenamento e tempo de carregamento.
-
-Não precisa preservar foto original em 8 MB para um card mobile.
-
----
-
-## P2 — Busca simples
-
-**Complexidade:** S
-
-Filtro client-side por:
-
-- título;
-- descrição;
-- ano.
-
-Só adicionar quando existirem memórias suficientes para justificar.
-
----
-
-## P2 — Cápsula aprimorada
-
-Além de “neste dia”, mostrar ocasionalmente:
-
-```text
-Há 1 ano...
-Há 2 anos...
-```
-
-O mecanismo já existe; é mais UI que infraestrutura.
-
----
-
-## Não fazer agora
-
-- álbum separado;
-- reconhecimento facial;
-- mapa;
-- vídeo;
-- tagging complexo;
-- IA para gerar texto.
-
----
-
-# 12. Módulo: Listas
-
-É provavelmente o módulo de maior frequência de uso.
-
-## P1 — Substituir prompt de renomear por bottom sheet
-
-**Complexidade:** S
-
-Mantém visual consistente e permite validação melhor.
-
----
-
-## P1 — Separar pendentes de concluídas
-
-**Complexidade:** S/M
-
-Em vez de misturar e depender apenas do estilo `completed`:
-
-```text
-Pendentes (5)
-...
-
-Concluídas (3) ▾
-```
-
-Concluídas começam recolhidas.
-
-Isso reduz ruído visual.
-
----
-
-## ✅ Concluído — Limpar concluídas com copy correta
-
-Concluído na Fase 0 em 25/10/2026.
-
----
-
-## P1 — Duplicar lista
-
-**Complexidade:** S
-
-Muito útil para:
-
-- mercado;
-- viagem;
-- mala;
-- checklist recorrente.
-
-Duplica estrutura e itens, inicialmente todos como `completed=false`.
-
-É mais simples que criar recorrência de tarefas.
-
----
-
-## P1 — Templates de lista
-
-**Complexidade:** S
-
-Na criação, oferecer opcionalmente:
-
-```text
-Em branco
-Compras de mercado
-Limpeza da casa
-Viagem
-Filmes/séries
-Date night
-```
-
-Templates são arrays JavaScript locais. Nenhuma tabela nova.
-
-O usuário continua podendo criar uma lista vazia.
-
----
-
-## P1 — Roleta melhor
-
-Adicionar:
-
-- “Sortear novamente”;
-- “Aceitar escolha”.
-
-Hoje a escolha final já pode marcar o item como concluído.
-
-Não registrar histórico da roleta ainda.
-
----
-
-## P2 — Duplicar item
-
-**Complexidade:** S
-
-Ação secundária no menu de edição.
-
----
-
-## P2 — Busca dentro da lista ativa
-
-**Complexidade:** S
-
-Só se listas começarem a ficar grandes.
-
----
-
-## P2 — Ordenação manual mobile mais previsível
-
-O drag-and-drop atual depende de polyfill.
-
-Alternativa mais simples e acessível se houver problemas reais:
-
-- botão ↑;
-- botão ↓.
-
-Não precisa substituir agora se drag funciona bem nos aparelhos usados.
-
----
-
-## Não adicionar por enquanto
-
-- subtarefas;
-- comentários;
-- anexos;
-- dependências;
-- Kanban;
-- datas obrigatórias;
-- recorrência complexa.
-
-Se uma tarefa precisa de data e horário, Agenda é o lugar natural.
-
----
-
-# 13. Módulo: Agenda
-
-## P1 — Editar compromisso
-
-**Complexidade:** M
-
-É a maior lacuna funcional do módulo.
-
-Reutilizar o formulário atual e o mecanismo:
-
-```text
-captureEdit()
-saveEdit()
-```
-
-Campos:
-
-- título;
-- data;
-- hora;
-- responsável;
-- local/nota.
-
----
-
-## P1 — Melhorar o card do próximo compromisso
-
-Na Home:
-
-- mostrar apenas próximo evento;
-- hora;
-- título;
-- responsável;
-- “+2 hoje” se houver mais.
-
----
-
-## P1 — Duplicar compromisso
-
-**Complexidade:** S
-
-Ação:
-
-> Duplicar
-
-Depois o usuário altera data/hora.
-
----
-
-## P1/P2 — Atalhos de repetição simples
-
-Em vez de um motor de recorrência:
-
-```text
-Duplicar para amanhã
-Duplicar para semana que vem
-Duplicar para mês que vem
-```
-
-Resolve atividades recorrentes sem RRULE, jobs ou geração automática.
-
----
-
-## P2 — Compromisso sem horário
-
-**Complexidade:** M
-
-Adicionar toggle:
-
-> Dia todo
-
-Só fazer se uso real exigir; hoje horário obrigatório mantém a modelagem simples.
-
----
-
-## P2 — Melhorar confirmação de compromisso do casal
-
-O atual “Ambos cientes” é uma boa ideia.
-
-Melhorias pequenas:
-
-- mostrar quem criou;
-- botão “Ciente” somente para parceiro;
-- feedback por toast.
-
-Não criar RSVP completo.
-
----
-
-## Não fazer agora
-
-- Google Calendar sync;
-- Apple Calendar sync;
-- push notifications;
-- convidados;
-- recorrência RRULE;
-- timezone avançado.
-
----
-
-# 14. Módulo: Finanças
-
-Este módulo precisa ser simples o suficiente para não competir com apps financeiros completos.
-
-A proposta deve continuar sendo:
-
-> “O que temos que pagar e como dividimos isso entre nós?”
-
-Não:
-
-> “Controle financeiro completo da nossa vida.”
-
-## ✅ Concluído — Corrigir escopo mensal
-
-Concluído na Fase 0 em 25/10/2026.
-
----
-
-## P1 — Status de vencimento
-
-**Complexidade:** S
-
-Cada conta pendente deve mostrar:
-
-- hoje;
-- amanhã;
-- em X dias;
-- atrasada há X dias.
-
-Sem notification engine.
-
----
-
-## P1 — Separar visualmente
-
-```text
-Atrasadas
-Vencem em breve
-Depois
-```
-
-Somente se houver itens em cada bloco.
-
----
-
-## P1 — “Duplicar para próximo mês”
-
-**Complexidade:** S
-
-Ação na conta:
-
-> Repetir no próximo mês
-
-Duplica:
-
-- título;
-- valor;
-- categoria;
-- responsável;
-- dia equivalente do próximo mês;
-- `completed=false`.
-
-Essa é minha recomendação no lugar de recorrência automática.
-
----
-
-## P1 — Filtro mensal real
-
-Permitir selecionar o mês e ver:
-
-- total daquele mês;
-- categorias daquele mês;
-- pagas;
-- pendentes daquele mês.
-
-Manter um card separado para “Total pendente geral”.
-
----
-
-## P1 — Acerto mais explicativo
-
-Hoje o cálculo já existe.
-
-Melhorar copy:
-
-```text
-Para equilibrar as contas de outubro:
-Luis transfere R$ 148,30 para X
-```
-
-ou
-
-```text
-Tudo equilibrado neste mês ✓
-```
-
----
-
-## P2 — “Marcar todas como pagas” não recomendado
-
-É fácil demais cometer erro.
-
-Melhor manter ação individual.
-
----
-
-## P2 — Categorias adicionais somente se necessário
-
-Hoje:
-
-- Moradia;
-- Mercado;
-- Lazer;
-- Transporte;
-- Outros.
-
-Antes de permitir categorias customizadas, observar se `Outros` está concentrando uso demais.
-
-Categorias customizadas aumentam bastante a complexidade de gráficos, cores e edição.
-
----
-
-## P2 — Resumo mensal leve
-
-```text
-Outubro
-R$ 3.280 em despesas
-Moradia 46%
-12 contas pagas
-2 pendentes
-```
-
-Sem orçamento, patrimônio ou fluxo de caixa.
-
----
-
-## Não fazer agora
-
-- Open Finance;
-- importação bancária;
-- cartões;
-- parcelamento sofisticado;
-- orçamento por envelope;
-- investimentos;
-- OCR de boleto;
-- conciliação automática.
-
-Essas features mudariam completamente o escopo do Nook.
-
----
-
-# 15. Módulo: Metas
-
-## P1 — Editar meta
-
-**Complexidade:** M
-
-Atualmente é possível criar/progredir/excluir.
-
-Adicionar edição de:
-
-- título;
-- ícone;
-- responsável;
-- alvo;
-- prazo;
-- unidade.
-
-Preservar histórico existente.
-
----
-
-## P1 — Estado concluído
-
-**Complexidade:** S
-
-Quando `current >= target`:
-
-- card ganha estado “Concluída 🎉”;
-- esconder CTA de contribuição;
-- manter histórico acessível.
-
----
-
-## P1 — Separar ativas e concluídas
-
-```text
-Em andamento
-Concluídas ▾
-```
-
-Concluídas recolhidas por padrão.
-
-Nenhum campo `archived` obrigatório.
-
----
-
-## P1 — Desfazer último lançamento
-
-**Complexidade:** M
-
-Para corrigir erro de toque:
-
-- “Desfazer último depósito”;
-- “Desfazer último +1”.
-
-Usar o último item do histórico e recalcular `current`.
-
-Isso é muito mais importante que adicionar mais tipos de meta.
-
----
-
-## P1 — Clarificar meta de hábito
-
-Hoje uma meta de hábito representa uma quantidade total.
-
-Copy sugerida:
-
-> Quantas vezes vocês querem fazer isso?
-
-Evitar transmitir ideia de streak diário/semanal enquanto esse comportamento não existe.
-
----
-
-## P2 — Templates de meta
-
-**Complexidade:** S
-
-Exemplos:
-
-- Reserva de viagem;
-- Entrada da casa;
-- Date nights;
-- Treinos juntos;
-- Filmes para ver juntos.
-
-O template apenas preenche o formulário.
-
----
-
-## P3 — Metas recorrentes/hábitos por período
-
-Somente depois de validar necessidade.
-
-Exigiria:
-
-- períodos;
-- resets;
-- streak;
-- calendário;
-- regras de atraso.
-
-É uma escalada grande de complexidade.
-
----
-
-# 16. Módulo: Ajustes
-
-## P1 — Tirar da bottom navigation
-
-Manter acessível pela Home.
-
----
-
-## P1 — Organizar em quatro grupos
-
-```text
-Nosso Nook
-- Editar perfil
-- Compartilhar convite
-
-Aparência
-- Tema
-
-Dados
-- Exportar backup
-
-Conta
-- Sair
-```
-
----
-
-## P1 — Compartilhar código
-
-Já descrito.
-
----
-
-## P2 — Exportar backup JSON
-
-**Complexidade:** S/M
-
-Gerar um arquivo com:
-
-- perfil;
-- listas;
-- agenda;
-- finanças;
-- metas;
-- memórias sem bytes de fotos;
-- recados.
-
-Primeiro implementar **somente exportação**.
-
-Importação traz muito mais risco de conflito e corrupção e pode esperar.
-
----
-
-## P2 — Informações técnicas discretas
-
-No rodapé:
-
-```text
-Nook v1.x
-Última sincronização: agora
-```
-
-Útil principalmente enquanto o app está em desenvolvimento.
-
----
-
-# 17. Nova funcionalidade transversal: Resumo da semana
-
-Esta seria minha principal feature nova depois do polimento dos módulos existentes.
-
-## Por que vale a pena
-
-Ela conecta módulos sem criar um novo sistema.
-
-## Dados usados
-
-- Agenda próximos 7 dias.
-- Tarefas pendentes.
-- Contas vencendo.
-- Meta mais próxima de conclusão.
-- Memória/cápsula relevante.
-
-## Onde fica
-
-Home.
-
-Não criar nova aba.
-
-## Exemplo
-
-```text
-Nossa semana
-
-3 compromissos
-5 tarefas abertas
-R$ 640 vencem até domingo
-Viagem está em 78%
-
-[Ver semana]
-```
-
-## Complexidade
-
-Média, mas quase toda no frontend.
-
----
-
-# 18. Nova funcionalidade transversal: Quick Add
-
-Minha segunda feature transversal favorita.
-
-Um único botão acessa todas as ações frequentes.
-
-```text
-+ Tarefa
-+ Conta
-+ Compromisso
-+ Recado
-+ Memória
-```
-
-Não adiciona tabela, regra de negócio ou dependência.
-
-É uma melhoria de **velocidade percebida**.
-
----
-
-# 19. Nova funcionalidade transversal: Templates
-
-Templates são uma forma excelente de adicionar valor sem adicionar arquitetura.
-
-## Listas
-
-- Mercado.
-- Limpeza.
-- Mala de viagem.
-- Filmes.
-- Date night.
-
-## Metas
-
-- Viagem.
-- Reserva.
-- Experiência juntos.
-- Hábito compartilhado.
-
-## Decisão
-
-- Onde comer.
-- O que assistir.
-- O que fazer no fim de semana.
-
-Tudo pode morar em constantes JavaScript locais.
-
-Nenhum backend adicional.
-
----
-
-# 20. Performance
-
-O Nook já é pequeno. O objetivo não é micro-otimizar, e sim evitar problemas futuros óbvios.
-
-## ✅ Concluído — Remover fetch duplicado de profile
-
-Concluído na Fase 0 em 25/10/2026.
-
----
-
-## P1 — Lazy load das memórias
-
-Já descrito.
-
----
-
-## P1 — Comprimir imagens
-
-Já descrito.
-
----
-
-## P1 — Limitar render da Home
-
-Não renderizar toda timeline de memórias e todos os recados na Home.
-
-Isso melhora simultaneamente UX e performance.
-
----
-
-## P2 — Renderizar apenas itens da lista ativa
-
-Hoje `renderLists()` cria DOM para todos os itens de todas as listas e esconde os não ativos.
-
-Para um app pessoal isso funciona bem.
-
-Só mudar quando houver sinais como:
-
-- centenas de itens;
-- lentidão de render;
-- memória excessiva.
-
-Se acontecer, renderizar apenas a lista ativa será mais simples do que virtualização.
-
-**Não implementar virtual list.**
-
----
-
-## P2 — Selecionar somente colunas necessárias
-
-O store usa `select('*')`.
-
-Pode futuramente trocar por colunas explícitas, mas o ganho atual é pequeno.
-
-Prioridade baixa.
-
----
-
-## ✅ Concluído — Cache de signed URLs
-
-Implementado em memória junto do Storage privado:
-
-```text
-path -> { url, expiresAt }
-```
-
-Não usa `localStorage` persistente.
-
----
-
-## P2 — Atualização do PWA
-
-O service worker protege contra mistura de versões, o que é bom.
-
-Adicionar posteriormente um aviso:
-
-> Uma nova versão do Nook está disponível.
-> [Atualizar]
-
-Sem forçar refresh no meio de uma sessão.
-
----
-
-# 21. Qualidade de código
-
-## Princípio
-
-Melhorar código sem transformar o projeto em arquitetura enterprise.
-
-## P1 — Constantes de domínio
-
-Hoje aparecem valores como:
-
-```text
-IS
-VO
-Casal
-```
-
-Centralizar em `rules.js` ou `store.js`:
-
-```js
-OWNER.P1
-OWNER.P2
-OWNER.COUPLE
-```
-
-Não precisa migrar banco ou refatorar tudo de uma vez.
-
----
-
-## ✅ Concluído — Helpers de Storage
-
-`uploadPhoto`, `resolvePhotoUrl`/`getPhotoDisplayUrl` e `deletePhoto` foram centralizados em `store.js`.
-
----
-
-## P1 — Remover duplicação de UI de confirmação
-
-Criar um bottom sheet de confirmação reutilizável simples.
-
-Não criar componente genérico complexo.
-
----
-
-## P1 — Manter regras fora do DOM
-
-Continuar usando `rules.js` para:
-
-- cálculos financeiros;
-- datas;
-- validações;
-- progresso de metas;
-- normalizações.
-
-Esse é um dos melhores padrões atuais do projeto.
-
----
-
-## P1 — Testes das regras puras
-
-As primeiras funções que merecem testes:
-
-- `cents`;
-- `validDate`;
-- `daysTogether`;
-- `financeShare`;
-- `financialSummary`;
-- `normalizeListItems`;
-- `normalizeGoalHistory`;
-- `goalProgress`;
-- `goalForecast`;
-- `validateExpense`;
-- `validateGoal`.
-
-### Abordagem simples
-
-Usar test runner nativo do Node, sem Jest/Vitest, se possível.
-
-Adicionar somente a infraestrutura mínima necessária para rodar:
-
-```text
-node --test
-```
-
-Prioridade maior para finanças, porque um erro ali é muito mais grave que um erro cosmético.
-
----
-
-## P2 — Dividir `home.js` somente quando necessário
-
-`home.js` já reúne mood, memória, mural e hero.
-
-Se crescer muito após o roadmap, considerar:
-
-```text
-home.js
-memories.js
-notes.js
-```
-
-Não dividir agora apenas por estética arquitetural.
-
----
-
-## P2 — Event delegation somente onde houver ganho claro
-
-Listas criam muitos listeners por item.
-
-Event delegation pode reduzir isso, mas também aumenta indireção.
-
-Fazer somente se o volume real justificar.
-
----
-
-## P2 — Padronizar nomenclatura gradual
-
-Hoje há mistura de português, inglês e identificadores históricos.
-
-Não fazer mega-refactor.
-
-Apenas definir que **código novo** segue uma convenção consistente.
-
-Sugestão:
-
-- nomes técnicos em inglês;
-- textos de interface em pt-BR;
-- IDs estáveis e sem nomes pessoais históricos.
-
----
-
-# 22. Segurança e privacidade
-
-## ✅ Concluído no baseline — RLS em todas as tabelas
-
-`setup.sql` define policies por membership/couple para as tabelas compartilhadas. O frontend não é barreira de segurança; validar a implantação real continua obrigatório.
-
----
-
-## ✅ Concluído no código — Storage privado e por casal
-
-Frontend e `setup.sql` estão alinhados; validar o ambiente Supabase real no smoke test.
-
----
-
-## ✅ Concluído no baseline — RPCs seguras
-
-`setup.sql` versiona `nook_join` e `nook_set_mood` com o contrato de autorização atual. Validar o comportamento no projeto Supabase implantado continua parte do smoke test.
-
----
-
-## ✅ Concluído — Limites do Storage
-
-`setup.sql` configura 8 MB e MIME types `image/jpeg`, `image/png`, `image/webp` e `image/gif`; o frontend também valida para UX.
-
----
-
-## P1 — Limpeza de arquivos órfãos
-
-Ao trocar ou excluir uma foto do próprio Nook, remover arquivo antigo quando não houver mais referência.
-
----
-
-## P2 — Exclusão da conta
-
-Necessária antes de transformar o app em produto público.
-
-Para uso pessoal atual, pode esperar.
-
----
-
-# 23. PWA e experiência mobile
-
-## P1 — Banner offline
-
-Já descrito.
-
----
-
-## P1 — Instalação
-
-Opcionalmente mostrar uma dica de instalação depois de algumas sessões, não no primeiro acesso.
-
-Não bloquear experiência.
-
----
-
-## P1 — Safe areas
-
-Continuar respeitando `env(safe-area-inset-*)` especialmente na bottom bar e sheets.
-
----
-
-## P2 — Nova versão disponível
-
-Já descrito.
-
----
-
-## Não fazer agora
-
-- background sync complexo;
-- offline mutations;
-- push infrastructure;
-- native wrapper/Cordova/Capacitor.
-
-A PWA é suficiente para o estágio atual.
-
----
-
-# 24. UI Design System mínimo
-
-Não criar Storybook, tokens JSON ou biblioteca de componentes.
-
-Manter apenas um sistema CSS pequeno.
-
-## Tokens que vale adicionar
-
-Além dos já existentes:
-
-```text
---space-1
---space-2
---space-3
---shadow-sm
---shadow-md
---danger
---success
---warning
-```
-
-## Componentes visuais canônicos
-
-- `.btn-primary`
-- `.btn-secondary`
-- `.btn-danger`
-- `.icon-button`
-- `.dash-card`
-- `.row-card`
-- `.bottom-sheet`
-- `.empty-state`
-- `.status-badge`
-- `.toast-notification`
-
-Evitar criar uma classe visual exclusiva para cada tela.
-
----
-
-# 25. Melhorias pequenas de UX com alto retorno
-
-## P1
-
-- Autofocus no campo principal ao abrir formulário.
-- Data padrão = hoje onde fizer sentido.
-- Preservar data selecionada da Agenda ao adicionar evento.
-- Mostrar success toast após operações importantes.
-- Mensagens de erro humanas, sem texto técnico do Supabase.
-- Botões de ícone com tooltip/`aria-label`.
-- Não fechar modal se gravação falhou.
-- Desabilitar ação enquanto grava.
-- Manter proteção contra alterações não salvas.
-- Mostrar “Salvando…” somente quando operação for perceptível.
-
-## P2
-
-- Animações de entrada/saída mais discretas.
-- `prefers-reduced-motion`.
-- Haptic somente em ações importantes; evitar excesso.
-- Empty states contextuais com CTA único.
-
----
-
-# 26. Features que parecem boas, mas eu deixaria fora do roadmap principal
-
-## Chat do casal
-
-Já existem WhatsApp/iMessage. Não há vantagem em competir.
-
-## IA
-
-Nenhuma dor atual exige IA.
-
-## Feed social
-
-Mudaria completamente o produto.
-
-## Gamificação/pontos
-
-Pode tornar tarefas domésticas infantis ou competitivas.
-
-## Calendário externo
-
-Integração complexa para ganho ainda não validado.
-
-## Open Finance
-
-Transformaria Nook em fintech/finance manager.
-
-## Push notifications
-
-Úteis futuramente, mas exigem infraestrutura e podem tornar o app invasivo.
-
-## Recorrência complexa
-
-Preferir “duplicar amanhã/semana/mês” enquanto isso resolver o problema.
-
-## Offline-first completo
-
-Realtime + conflitos + filas offline formam um sistema muito mais complexo.
-
-## Migração de framework
-
-Não existe benefício atual proporcional ao custo.
-
----
-
-# 27. Sequência recomendada de implementação
-
-## Release A — “Confiável”
-
-### Objetivo
-
-Eliminar inconsistências antes de crescer.
-
-### Entregas
-
-1. Corrigir emojis do mural.
-2. Corrigir copy/comportamento de limpar concluídas.
-3. Corrigir resumo financeiro mensal.
-4. Alinhar Storage privado por `couple_id`.
-5. Centralizar upload/resolve/delete de fotos.
-6. Versionar SQL/RLS/RPCs.
-7. Remover fetch duplicado de perfil.
-8. Fixar versões CDN.
-9. Executar bateria manual em duas contas simultâneas.
-
-### Definição de pronto
-
-Nenhum fluxo principal perde dados, sobrescreve alterações silenciosamente ou expõe foto de outro casal.
-
----
-
-## Release B — “Mais simples”
-
-### Objetivo
-
-Fazer o Nook parecer menor mesmo tendo muitas funcionalidades.
-
-### Entregas
-
-1. Home “Hoje primeiro”.
-2. Resumos em vez de feeds completos na Home.
-3. Settings fora da bottom bar.
-4. Navegação com 5 itens.
-5. Padronização de dialogs/bottom sheets.
-6. Remoção progressiva de `alert/confirm/prompt`.
-7. Classes CSS no lugar dos estilos inline mais visíveis.
-8. Offline banner.
-9. Revisão de tap targets/acessibilidade.
-
-### Definição de pronto
-
-Um usuário abre o app e entende em menos de 10 segundos o que precisa de atenção.
-
----
-
-## Release C — “Completo sem ficar pesado”
-
-### Objetivo
-
-Fechar lacunas funcionais óbvias.
-
-### Entregas
-
-1. Editar compromisso.
-2. Editar meta.
-3. Desfazer último progresso de meta.
-4. Duplicar conta para próximo mês.
-5. Status de vencimento das contas.
-6. Duplicar lista.
-7. Melhorar roleta.
-8. Recado “Até eu remover”.
-9. Viewer de memória.
-10. Lazy loading/compressão de imagem.
-
----
-
-## Release D — “Uso diário”
-
-### Objetivo
-
-Aumentar frequência sem criar novas áreas.
-
-### Entregas
-
-1. Quick Add.
-2. Templates de lista.
-3. Templates de meta.
-4. Atalhos de duplicação de agenda.
-5. Resumo da semana.
-6. Atalhos contextuais na Home.
-
----
-
-## Release E — “Polimento técnico”
-
-### Objetivo
-
-Garantir que crescimento não degrade experiência.
-
-### Entregas
-
-1. Testes das regras puras.
-2. Cache de signed URLs.
-3. Update prompt do service worker.
-4. Export JSON.
-5. Refatorações pequenas orientadas por tamanho real dos módulos.
-6. Revisão de queries e renderização com dados reais maiores.
-
----
-
-# 28. Ranking geral — impacto x esforço
-
-| Item | Prioridade | Impacto | Complexidade | Recomendo agora? |
-|---|---|---:|---:|---|
-| Corrigir reactions | P0 | Alto | S | Sim |
-| Corrigir “arquivo recuperável” | P0 | Alto | S | Sim |
-| Storage privado por casal | P0 | Muito alto | M | Sim |
-| Corrigir resumo mensal de finanças | P0 | Muito alto | S/M | Sim |
-| Remover fetch duplicado | P0 | Médio | S | Sim |
-| Versionar SQL/RLS | P0 | Muito alto | S/M | Sim |
-| Home “Hoje primeiro” | P1 | Muito alto | M | Sim |
-| Retirar Settings da bottom bar | P1 | Alto | S | Sim |
-| Substituir dialogs nativos | P1 | Alto | M | Sim |
-| Editar Agenda | P1 | Muito alto | M | Sim |
-| Editar Metas | P1 | Alto | M | Sim |
-| Desfazer progresso de Meta | P1 | Alto | M | Sim |
-| Duplicar conta próximo mês | P1 | Muito alto | S | Sim |
-| Vencimento/atraso de contas | P1 | Alto | S | Sim |
-| Duplicar lista | P1 | Alto | S | Sim |
-| Templates | P1/P2 | Alto | S | Sim |
-| Quick Add | P1/P2 | Muito alto | S/M | Sim |
-| Resumo da semana | P2 | Muito alto | M | Depois |
-| Viewer de memória | P1 | Alto | S | Sim |
-| Compressão de fotos | P1 | Alto | M | Sim |
-| Lazy loading de fotos | P1 | Alto | S/M | Sim |
-| Export JSON | P2 | Médio | S/M | Depois |
-| Testes de rules.js | P1/P2 | Alto | M | Sim |
-| Histórico de mood | P3 | Baixo/Médio | M/L | Não |
-| Recorrência completa | P3 | Médio | L | Não |
-| Push notifications | P3 | Médio | L | Não |
-| Calendar sync | P3 | Médio | L | Não |
-| Open Finance | P3 | Baixo para o core | Muito alto | Não |
-| IA | P3 | Indefinido | Alto | Não |
-| Migração para framework | P3 | Baixo | Muito alto | Não |
-
----
-
-# 29. As 15 próximas tarefas que eu executaria
-
-Se fosse continuar o projeto agora, faria exatamente nesta ordem:
-
-1. Corrigir whitelist das reações do mural.
-2. Corrigir texto/comportamento de “Limpar concluídas”.
-3. Corrigir o cálculo/escopo do resumo mensal de Finanças.
-4. Implementar Storage privado com path por `couple_id`.
-5. Centralizar helpers de fotos.
-6. Adicionar `SUPABASE.sql` versionado.
-7. Remover fetch duplicado de perfil.
-8. Fazer teste manual simultâneo com duas contas.
-9. Redesenhar a Home para “Hoje primeiro”.
-10. Tirar Ajustes da bottom bar.
-11. Implementar edição de compromisso.
-12. Implementar edição + desfazer em Metas.
-13. Implementar “Duplicar para próximo mês” em Finanças.
-14. Implementar Quick Add usando modais existentes.
-15. Adicionar templates simples para Listas e Metas.
-
----
-
-# 30. Resultado esperado após esse roadmap
-
-O Nook deve continuar parecendo pequeno mesmo ficando mais poderoso.
+Nook deve continuar parecendo pequeno mesmo ficando mais útil.
 
 A experiência ideal é:
 
@@ -2117,13 +26,1028 @@ Não:
 ```text
 Abro o Nook
 ↓
-Vejo seis dashboards
+Vejo vários dashboards complexos
 ↓
 Configuro filtros
 ↓
-Gerencio um sistema complexo
+Gerencio um sistema pesado
 ```
 
-O maior diferencial do Nook não deve ser ter mais funcionalidades que outros apps. Deve ser **juntar exatamente as pequenas coisas que um casal precisa em um lugar agradável, pessoal e extremamente fácil de usar**.
+O diferencial não é ter mais features. É juntar as pequenas coisas certas para um casal em uma experiência pessoal e simples.
 
-Esse princípio deve ser o filtro de todas as próximas decisões de produto e engenharia.
+# 2. Princípios do roadmap
+
+## 2.1 Segurança e confiabilidade antes de expansão
+
+Nenhuma feature vale regressão de:
+
+- persistência;
+- isolamento por casal;
+- Storage privado;
+- concorrência;
+- Auth;
+- Realtime.
+
+## 2.2 Não criar novo módulo se a feature cabe em um atual
+
+Preferir extensão de:
+
+- Home;
+- Listas;
+- Agenda;
+- Finanças;
+- Metas;
+- Ajustes.
+
+## 2.3 Uma ação frequente deve exigir 1–2 interações
+
+Evitar fluxos profundos e configuração excessiva.
+
+## 2.4 Progressive disclosure
+
+Mostrar primeiro:
+
+- o que importa agora;
+- o próximo passo;
+- o resumo.
+
+Detalhes ficam sob demanda.
+
+## 2.5 Evitar dependências
+
+Preferir:
+
+- Web APIs;
+- CSS;
+- helpers locais;
+- componentes existentes.
+
+## 2.6 Não migrar de stack sem dor concreta
+
+Vanilla JS + Supabase continua suficiente para o tamanho atual.
+
+# 3. Legenda
+
+- ✅ Concluído
+- 🧪 Implementado, ainda requer validação real
+- 🔜 Próximo
+- ⏳ Backlog
+- 🚫 Não priorizar agora
+
+# 4. Estado atual resumido
+
+## Base de confiabilidade
+
+✅ P0 concluído:
+
+- reações do mural alinhadas;
+- limpar concluídas corrigido;
+- Storage privado por casal;
+- helpers de foto centralizados;
+- backend versionado;
+- resumo financeiro mensal corrigido;
+- fetch duplicado removido;
+- dependências externas fixadas.
+
+## Simplificação de UX
+
+✅ P1 concluído:
+
+- bottom bar com 5 itens;
+- Ajustes fora da bottom nav;
+- confirmações visuais;
+- renomear lista sem `prompt()`;
+- exclusões principais sem dialogs nativos;
+- estilos inline estruturais reduzidos;
+- skeletons;
+- toast;
+- feedback não bloqueante.
+
+## Convite, mood e mural
+
+✅ P1.1 concluído:
+
+- zero `alert/confirm/prompt` na experiência normal;
+- Service Worker sincronizado com versões CDN;
+- convite nativo + fallback clipboard;
+- estado do parceiro claro;
+- semântica correta de `approved`;
+- affordance para trocar próprio mood;
+- parceiro read-only;
+- recado permanente;
+- edição de recado com `nook_version`.
+
+## Memórias, Listas, Agenda e Finanças
+
+✅ P1.2 concluído:
+
+- viewer de memória;
+- lazy loading da grid;
+- compressão central de fotos para WebP/1600 px;
+- pendentes/concluídas separados nas listas;
+- edição de compromisso;
+- autoria + Ciente na Agenda;
+- data selecionada preservada na criação;
+- status de vencimento;
+- copy explicativa do acerto mensal.
+
+## Metas e UX transversal
+
+✅ P1.3 concluído:
+
+- editar meta;
+- conclusão derivada de `current >= target`;
+- metas ativas/concluídas separadas;
+- undo do último lançamento pelo histórico;
+- `OWNER` e `GOAL_TYPE` em `rules.js`;
+- mensagens de erro mais humanas;
+- autofocus seletivo;
+- double submit continua protegido por `runAction()`;
+- `prefers-reduced-motion` global;
+- haptics reduzidos a ações relevantes.
+
+# 5. Gate imediato — antes de nova feature grande
+
+## 🔜 V1 pessoal confiável — smoke test de duas contas
+
+**Prioridade:** máxima
+
+Antes de crescer o produto, validar a baseline real em dois clientes.
+
+### Fluxo obrigatório
+
+```text
+P1 cria Nook
+→ compartilha convite
+→ P2 entra
+→ P1 verifica conexão
+→ onboarding
+→ avatar/capa/memória com foto
+→ mood P1
+→ mood P2
+→ lista
+→ agenda
+→ finanças
+→ meta
+→ recado temporário
+→ recado permanente
+→ editar recado
+→ reload nos dois clientes
+→ confirmar Realtime
+→ logout/login cruzado
+```
+
+### Também validar
+
+- conflito de edição em duas janelas;
+- reconexão após perda de rede;
+- foreground após background;
+- isolamento entre dois casais;
+- Storage privado;
+- cache `nook-v1.13`;
+- URLs externas versionadas no Cache Storage.
+
+### Definição de pronto
+
+Nenhum fluxo principal:
+
+- perde dados;
+- herda dados de outra conta;
+- sobrescreve conflito silenciosamente;
+- expõe dado/foto de outro casal;
+- fica preso em cache antigo.
+
+# 6. Home
+
+## 🔜 P1 — Home “Hoje primeiro”
+
+**Impacto:** muito alto  
+**Complexidade:** M
+
+Reorganizar a Home para priorizar o presente.
+
+Ordem sugerida:
+
+### Identidade
+
+- capa;
+- nomes;
+- dias juntos;
+- Ajustes discreto.
+
+### Como estamos
+
+- meu mood;
+- mood do parceiro.
+
+### Hoje
+
+Agregar apenas dados já existentes:
+
+- próximo compromisso;
+- tarefas pendentes relevantes;
+- conta vencendo/atrasada;
+- uma meta em destaque quando fizer sentido.
+
+### Recado
+
+Mostrar poucos recados atuais, não transformar Home em feed completo.
+
+### Nós
+
+Memórias recentes + cápsula quando houver.
+
+### Objetivo
+
+O usuário deve entender em menos de 10 segundos:
+
+- como estamos;
+- o que acontece hoje;
+- o que exige atenção.
+
+## 🔜 P1 — Quick Add
+
+**Impacto:** muito alto  
+**Complexidade:** S/M
+
+Um único botão `+` na Home:
+
+```text
+Adicionar...
+Tarefa
+Conta
+Compromisso
+Recado
+Memória
+```
+
+Reutilizar bottom sheets existentes.
+
+Não duplicar formulários.
+
+## ⏳ P2 — Resumo da semana
+
+Gerar dinamicamente com dados existentes:
+
+```text
+Nossa semana
+4 compromissos
+7 tarefas abertas
+R$ 820 em contas vencendo
+Meta Viagem: 62%
+```
+
+Sem tabela nova.
+
+## ⏳ P2 — “Uma coisa para nós”
+
+Card leve baseado em regras determinísticas.
+
+Exemplos:
+
+- memória não registrada há muito tempo;
+- meta chegou a marco;
+- aniversário de memória;
+- tarefa conjunta esquecida.
+
+Não precisa IA.
+
+# 7. Convite e onboarding
+
+## ✅ Compartilhar convite nativamente
+
+Concluído.
+
+- `navigator.share()` quando disponível;
+- clipboard como fallback;
+- cancelamento de share sem erro.
+
+## ✅ Estado do parceiro
+
+Concluído.
+
+Antes da conexão:
+
+```text
+Esperando seu parceiro entrar
+```
+
+Depois:
+
+```text
+Parceiro conectado ✓
+```
+
+## ✅ Semântica de `approved`
+
+Concluído no frontend/documentação.
+
+No fluxo atual:
+
+- `false` = P2 ainda não entrou;
+- `true` = P2 entrou via `nook_join()`.
+
+## ⏳ P2 — Melhorar onboarding visual
+
+Somente depois do smoke test.
+
+Possíveis melhorias:
+
+- progresso simples em uma etapa;
+- copy mais íntima;
+- preview de avatar mais claro;
+- reduzir texto operacional.
+
+Não criar onboarding multi-step complexo sem necessidade.
+
+# 8. Mood
+
+## ✅ Trocar próprio mood com affordance clara
+
+Concluído.
+
+## ✅ Parceiro read-only + feedback não bloqueante
+
+Concluído.
+
+## 🚫 P3 — Histórico de mood
+
+Não priorizar agora.
+
+Exigiria mudar a modelagem para histórico e adicionaria analytics a uma feature que hoje funciona justamente por ser leve.
+
+# 9. Mural de recados
+
+## ✅ Reações canônicas
+
+```text
+❤️ 😘 ☕
+```
+
+## ✅ “Até eu remover”
+
+Concluído com `expires_at = null`.
+
+## ✅ Editar recado
+
+Concluído para:
+
+- texto;
+- duração.
+
+Usa edição versionada.
+
+## 🔜 P1 técnico — autoria estável de recado
+
+**Prioridade:** depois do smoke test  
+**Complexidade:** M
+
+Hoje a UI identifica autor pelo texto `owner`.
+
+Se a regra “somente o autor edita” precisar ser garantida de forma robusta:
+
+- adicionar `created_by` ou equivalente estável em `notes`;
+- migrar novos registros;
+- adaptar store;
+- adicionar policy/RPC se necessário.
+
+Não implementar silenciosamente. Exige migração SQL explícita.
+
+## ⏳ P2 — Limitar preview de recados na Home
+
+Quando Home for redesenhada, mostrar poucos recados recentes/atuais.
+
+## 🚫 Não fazer agora
+
+- threads;
+- comentários;
+- chat;
+- status de leitura;
+- anexos;
+- push.
+
+O mural não deve virar mensageiro.
+
+# 10. Memórias
+
+## ✅ Storage privado
+
+Concluído.
+
+## ✅ Signed URL em memória
+
+Concluído.
+
+## ✅ Viewer de foto/memória
+
+Concluído.
+
+Viewer atual mostra foto maior, data, título, nota e ações de editar/excluir reutilizando bottom sheets existentes.
+
+## ✅ Lazy loading
+
+Concluído na grid com `<img loading="lazy" decoding="async">`.
+
+Signed URLs continuam sendo resolvidas pelo store; o browser controla o download lazy dos bytes da imagem.
+
+## ✅ Compressão antes de upload
+
+Concluído no helper central `store.uploadPhoto()`.
+
+Contrato atual:
+
+```text
+maior lado: 1600 px
+formato: WebP
+qualidade: 0,82
+GIF: preservado
+```
+
+## ⏳ P2 — Busca simples
+
+Buscar por título/nota/data localmente sobre dados já carregados.
+
+## ⏳ P2 — Cápsula aprimorada
+
+Melhorar apresentação, não criar sistema de “time capsule” complexo.
+
+# 11. Listas
+
+## ✅ Renomear com bottom sheet
+
+Concluído.
+
+## ✅ Limpar concluídas com copy correta
+
+Concluído.
+
+## ✅ Exclusões sem confirm nativo
+
+Concluído.
+
+## ✅ Separar pendentes/concluídas visualmente
+
+Concluído.
+
+- pendentes sempre visíveis;
+- concluídas em seção recolhida por padrão;
+- contador acompanha filtros;
+- marcar/desmarcar move o item entre seções;
+- estado expandido é apenas local de UI.
+
+## 🔜 P1 — Duplicar lista
+
+Útil para compras recorrentes/viagem/checklist.
+
+Duplicar:
+
+- nome com sufixo simples;
+- itens;
+- responsáveis/prioridades;
+- todos como `completed = false`.
+
+## 🔜 P1 — Templates simples
+
+Poucos templates locais:
+
+- mercado;
+- viagem;
+- casa;
+- encontro/evento.
+
+Não criar marketplace/configuração de templates.
+
+## ⏳ P2 — Busca na lista ativa
+
+Somente se listas reais ficarem grandes.
+
+## ⏳ P2 — Melhorar drag mobile
+
+Fazer apenas se uso real mostrar problema.
+
+# 12. Agenda
+
+## ✅ Editar compromisso
+
+Concluído reutilizando o formulário atual, `captureEdit()`, `saveFormEdit()` e `nook_version`.
+
+Campos editáveis:
+
+- título;
+- data;
+- hora;
+- responsável;
+- subtítulo.
+
+A data atualmente selecionada também é preservada ao criar novo compromisso.
+
+## ✅ Autoria + “Ciente”
+
+Eventos novos usam `created_by`.
+
+- criador vê `Criado por você`;
+- parceiro vê `Criado por <nome>`;
+- somente parceiro recebe CTA **Ciente**;
+- `confirmed = true` representa **Ambos cientes**.
+
+Eventos legados sem `created_by` permanecem sem autoria inferida.
+
+## 🔜 P1 — Próximo compromisso mais claro
+
+Na Home, destacar:
+
+- horário;
+- título;
+- responsável;
+- proximidade.
+
+## ⏳ P1 — Duplicar compromisso
+
+Boa conveniência para eventos parecidos.
+
+## ⏳ P2 — Repetição simples
+
+Atalhos manuais:
+
+- amanhã;
+- próxima semana;
+- próximo mês.
+
+Não criar recorrência completa/RRULE agora.
+
+## ⏳ P2 — Compromisso sem horário
+
+Só se uso real justificar.
+
+# 13. Finanças
+
+## ✅ Escopo mensal corrigido
+
+Concluído.
+
+## ✅ Status de vencimento
+
+Concluído para contas pendentes:
+
+- vence hoje;
+- vence amanhã;
+- vence em N dias;
+- atrasada há N dias.
+
+Despesas pagas não recebem copy de atraso.
+
+## 🔜 P1 — Separar visualmente pendentes e pagas
+
+Reduzir ruído no histórico.
+
+## 🔜 P1 — Duplicar para próximo mês
+
+**Impacto:** muito alto  
+**Complexidade:** S/M
+
+Duplicar uma despesa mantendo:
+
+- título;
+- valor;
+- categoria;
+- pagador;
+
+E avançando a data para o próximo mês.
+
+Novo registro deve começar como pendente.
+
+## ⏳ P1 — Filtro mensal real na lista
+
+O resumo já respeita mês. Evoluir a lista quando fizer sentido.
+
+## ✅ Explicar melhor o acerto
+
+Concluído.
+
+A copy usa mês selecionado e nomes reais do casal, enquanto a matemática continua vindo de `financialSummary().balance`.
+
+## ⏳ P2 — Resumo mensal leve
+
+Comparar sem analytics pesado.
+
+# 14. Metas
+
+## ✅ Editar meta
+
+Concluído pelo mesmo formulário de criação e com controle de concorrência existente.
+
+Editáveis:
+
+- título;
+- ícone;
+- responsável;
+- alvo;
+- prazo;
+- unidade quando aplicável.
+
+Preservados:
+
+- tipo;
+- `current`;
+- `history`;
+- identidade;
+- `nook_version`.
+
+## ✅ Estado concluído
+
+Concluído.
+
+Regra única:
+
+```text
+current >= target
+```
+
+Não existe flag `completed`.
+
+Card concluído mostra **Concluída 🎉**, esconde contribuição e mantém editar/histórico/excluir/undo.
+
+## ✅ Separar ativas/concluídas
+
+Concluído.
+
+Concluídas ficam recolhidas por padrão e o estado aberto não é persistido.
+
+## ✅ Desfazer último lançamento
+
+Concluído.
+
+Undo remove o último item de `history` e recalcula `current` pelo histórico restante.
+
+Funciona para:
+
+- depósito financeiro;
+- `+1` de hábito;
+- retorno automático de concluída para ativa.
+
+## ✅ Constantes de domínio iniciais
+
+`rules.js` possui:
+
+```text
+OWNER.P1 / OWNER.P2 / OWNER.COUPLE
+GOAL_TYPE.FINANCIAL / GOAL_TYPE.HABIT
+```
+
+Sem migração de valores persistidos.
+
+## ⏳ P1 — Clarificar hábito
+
+A UI já diferencia hábito/financeiro e hábito aceita prazo/forecast, mas ainda pode receber refinamento de copy se uso real mostrar dúvida.
+
+## ⏳ P2 — Templates
+
+Exemplos:
+
+- reserva de emergência;
+- viagem;
+- leitura;
+- treino.
+
+# 15. Ajustes
+
+## ✅ Fora da bottom navigation
+
+Concluído.
+
+## ✅ Convite/estado do parceiro
+
+Concluído.
+
+## ⏳ P1 — Organizar em grupos
+
+Possível organização:
+
+```text
+Nosso Nook
+Aparência
+Dados e privacidade
+Conta
+```
+
+Fazer somente se a tela crescer mais.
+
+## ⏳ P2 — Exportar backup JSON
+
+Pode ser útil para confiança pessoal antes de distribuição maior.
+
+Exportar somente dados do casal atual.
+
+Não incluir secrets/signed URLs.
+
+## ⏳ P2 — Informações técnicas discretas
+
+Versão/cache somente em área secundária, se necessário para suporte.
+
+# 16. PWA / Offline
+
+## ✅ Cache de shell
+
+Concluído.
+
+## ✅ URLs CDN sincronizadas
+
+Concluído.
+
+## ✅ `prefers-reduced-motion`
+
+Concluído de forma global para animações/transições, mantendo comportamento funcional.
+
+## 🔜 P1 — Banner offline explícito
+
+Quando `navigator.onLine === false`:
+
+- mostrar estado pequeno “Sem conexão”;
+- manter o que já está renderizado;
+- explicar que alterações exigem conexão.
+
+Não criar fila offline.
+
+## 🔜 P1 — Instalação
+
+Melhorar descoberta de “Adicionar à tela inicial” apenas se necessário.
+
+## ⏳ P1 — Safe areas
+
+Revisar iPhone standalone:
+
+- top inset;
+- bottom nav;
+- bottom sheets.
+
+## ⏳ P2 — Nova versão disponível
+
+Prompt leve de atualização somente quando houver dor real com cache/versionamento.
+
+# 17. Acessibilidade
+
+## 🔜 P1 — Revisão básica
+
+- tap targets ~44px;
+- `aria-label` para ícones;
+- foco visível;
+- contraste dark mode;
+- teclado onde aplicável;
+- não depender só de cor.
+
+Já existe suporte parcial a `prefers-reduced-motion`.
+
+# 18. Performance
+
+## ✅ Fetch inicial duplicado removido
+
+Concluído.
+
+## ✅ Cache de signed URLs
+
+Concluído.
+
+## ✅ Lazy load de memórias
+
+Concluído.
+
+## ✅ Compressão de fotos
+
+Concluído no helper central de upload.
+
+## 🔜 P1 — Limitar render da Home
+
+Conectar ao redesenho “Hoje primeiro”.
+
+## ⏳ P2 — Renderizar só lista ativa
+
+Fazer se volume real justificar.
+
+## ⏳ P2 — Selecionar menos colunas
+
+Otimização futura, não antecipar sem métrica/dor.
+
+# 19. Qualidade de código
+
+## ✅ Constante única de reactions
+
+Concluído.
+
+## ✅ Helpers de Storage
+
+Concluído.
+
+## ✅ Confirmação reutilizável
+
+Concluído.
+
+## ✅ Diálogos nativos removidos
+
+Concluído na experiência normal.
+
+## ✅ Constantes de domínio iniciais
+
+`OWNER` e `GOAL_TYPE` centralizados sem mega-refactor.
+
+## ✅ Erros humanos + double submit
+
+`humanizeError()` cobre categorias comuns e `runAction()` continua protegendo gravações duplicadas.
+
+## 🔜 P1 — Testes das regras puras
+
+Primeiro candidato a automação de testes:
+
+- `cents`;
+- datas;
+- `financialSummary`;
+- `financeShare`;
+- `goalProgress`;
+- `goalForecast`;
+- `undoLastGoalProgress`;
+- `expenseDueStatus`;
+- normalização de listas;
+- normalização de histórico.
+
+Manter ferramenta de teste simples se for introduzida.
+
+## ⏳ P2 — Dividir `home.js`
+
+Somente quando o tamanho começar a impedir manutenção real.
+
+Não criar arquitetura por antecipação.
+
+## ⏳ P2 — Event delegation
+
+Usar apenas onde houver ganho claro.
+
+# 20. Segurança e privacidade
+
+## ✅ RLS nas tabelas
+
+Baseline em `setup.sql`.
+
+## ✅ Storage privado
+
+Concluído.
+
+## ✅ RPC de join e mood
+
+Baseline implementada.
+
+## ✅ Limites/MIME no Storage
+
+Baseline define contrato atual.
+
+## 🔜 P1/P2 — Autoria estável de notes
+
+Ver mural.
+
+## ⏳ P1 — Limpeza de arquivos órfãos
+
+Hoje existe limpeza best-effort em substituições/exclusões.
+
+Avaliar somente se Storage começar a acumular lixo real.
+
+## ⏳ P2 — Exclusão de conta/Nook
+
+Feature sensível.
+
+Exige:
+
+- UX clara;
+- cascades;
+- Storage;
+- Auth;
+- confirmação forte;
+- teste de rollback/irreversibilidade.
+
+# 21. Features transversais de uso diário
+
+## 🔜 Quick Add
+
+Ver Home.
+
+## ⏳ Templates
+
+Listas e Metas primeiro.
+
+## ⏳ Resumo da semana
+
+Somente com dados já existentes.
+
+# 22. O que não priorizar agora
+
+🚫 Chat do casal  
+🚫 IA  
+🚫 Feed social  
+🚫 Gamificação/pontos  
+🚫 Open Finance  
+🚫 Push notifications  
+🚫 Calendar sync externo  
+🚫 Recorrência complexa  
+🚫 Offline-first completo  
+🚫 Migração de framework  
+🚫 Múltiplos casais por conta  
+🚫 Permissões familiares complexas
+
+Esses itens aumentam arquitetura/operação muito mais do que o valor atual para o uso pessoal.
+
+# 23. Releases
+
+## Release A — Confiável
+
+**Status:** 🧪 implementação concluída; validação real ainda pendente.
+
+Inclui:
+
+- P0 completo;
+- backend versionado;
+- Storage privado;
+- concorrência;
+- CDN fixada;
+- PWA consistente.
+
+Falta para fechar formalmente:
+
+- smoke test completo em duas contas/dispositivos.
+
+## Release B — Mais simples
+
+**Status:** majoritariamente concluída.
+
+✅ navegação com 5 itens  
+✅ Ajustes fora da bottom bar  
+✅ dialogs nativos removidos  
+✅ toast/bottom sheets  
+✅ skeletons  
+✅ inline CSS reduzido  
+✅ empty states contextuais em fluxos alterados  
+🔜 Home “Hoje primeiro”  
+🔜 offline banner  
+🔜 revisão de acessibilidade
+
+## Release C — Completo sem ficar pesado
+
+**Status:** maior parte dos fluxos essenciais concluída.
+
+✅ recado permanente  
+✅ editar recado  
+✅ editar compromisso  
+✅ autoria/Ciente da Agenda  
+✅ editar meta  
+✅ estado concluído/undo de meta  
+✅ status de vencimento  
+✅ acerto financeiro explicativo  
+✅ viewer de memória  
+✅ lazy load/compressão de imagens  
+✅ separar concluídas em Listas  
+🔜 duplicar conta próximo mês  
+🔜 duplicar lista
+
+## Release D — Uso diário
+
+**Status:** backlog.
+
+- Quick Add;
+- templates;
+- resumo da semana;
+- atalhos contextuais.
+
+## Release E — Polimento técnico
+
+**Status:** backlog.
+
+- testes automatizados leves de `rules.js`;
+- autoria estável de notes se necessária;
+- export JSON;
+- otimização baseada em dor real;
+- refatorações pequenas orientadas por manutenção.
+
+# 24. Ordem recomendada a partir de agora
+
+1. **Smoke test completo P1/P2 no Supabase real.**
+2. Corrigir qualquer regressão encontrada.
+3. Home “Hoje primeiro”.
+4. Quick Add.
+5. Duplicar conta para próximo mês.
+6. Duplicar lista.
+7. Testes automatizados leves de `rules.js`.
+8. Offline banner + revisão básica de acessibilidade.
+9. Autoria estável de recados, se o risco justificar migração.
+10. Templates simples de Listas/Metas.
+11. Resumo da semana.
+12. Só então otimizações P2 como renderizar apenas a lista ativa.
+
+# 25. Filtro para qualquer nova ideia
+
+Antes de adicionar uma feature, responder:
+
+1. Isso resolve um problema recorrente do casal?
+2. Já existe dado suficiente para resolver sem nova infraestrutura?
+3. Cabe em uma tela/módulo atual?
+4. Pode ser feito em 1–2 interações?
+5. Aumenta manutenção de forma proporcional ao valor?
+6. Introduz risco de privacidade/sincronização?
+7. É melhor que executar uma das prioridades atuais?
+
+Se a resposta não for claramente positiva, deixar no backlog.

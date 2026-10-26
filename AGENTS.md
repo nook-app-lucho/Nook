@@ -1,110 +1,116 @@
 # AGENTS.md
 
-Este arquivo define como qualquer agente de IA deve trabalhar no Nook. Ele complementa:
+Este arquivo define como qualquer agente de IA deve trabalhar no Nook.
 
-- `PROJECT.md`: contexto estrutural e permanente do sistema.
-- `STATUS.md`: estado volátil, riscos e próxima tarefa.
-- `setup.sql`: fonte de verdade versionada para o contrato atual do Supabase.
+Ele complementa:
 
-Antes de alterar código, leia estes arquivos nesta ordem:
+- `PROJECT.md`: arquitetura, domínio e decisões permanentes;
+- `STATUS.md`: estado atual, riscos e próxima ação;
+- `Nook-ROADMAP.md`: backlog e sequência de produto;
+- `setup.sql`: baseline versionada do contrato Supabase.
+
+Antes de alterar código, leia nesta ordem:
 
 1. `AGENTS.md`
 2. `PROJECT.md`
 3. `STATUS.md`
-4. `setup.sql` quando a mudança tocar dados, Auth, RPC, RLS, Realtime ou Storage
+4. `Nook-ROADMAP.md` quando a tarefa envolver priorização/produto
+5. `setup.sql` quando tocar dados, Auth, RPC, RLS, Realtime ou Storage
+
+Nunca presuma que um prompt antigo representa a implementação atual. O código do snapshot mais recente é a fonte de verdade operacional.
 
 # Princípios de trabalho
 
-## 1. Prioridade: simplicidade e confiabilidade
+## 1. Simplicidade vence abstração preventiva
 
-Nook é um projeto pessoal e deve continuar fácil de entender e manter.
+Nook é um projeto pessoal e deve permanecer fácil de entender e manter por uma única pessoa.
 
-- Prefira a menor solução que resolva o problema corretamente.
-- Não introduza framework, bundler, state manager, ORM ou nova dependência sem necessidade concreta.
-- Não crie abstrações “para o futuro” sem uso atual.
-- Evite refatorações amplas quando uma alteração localizada for suficiente.
-- Preserve HTML/CSS/JavaScript ES Modules enquanto a arquitetura atual continuar adequada.
+- Prefira a menor solução correta.
+- Não introduza framework, bundler, state manager, ORM ou biblioteca sem necessidade concreta.
+- Não crie `services/`, `repositories/`, `controllers/` ou camadas equivalentes apenas por padrão arquitetural.
+- Não refatore código não relacionado à tarefa.
+- Preserve HTML/CSS/JavaScript ES Modules enquanto a arquitetura atual continuar suficiente.
+- Crie arquivo novo somente quando a responsabilidade realmente não couber de forma clara em um arquivo existente.
 
-## 2. Não quebrar o contrato com Supabase
+## 2. Confiabilidade e segurança vêm antes de feature nova
 
-O frontend depende de um contrato forte com o backend.
+Não considere uma alteração pronta apenas porque a UI funciona.
 
-Antes de alterar qualquer código relacionado a dados, confirme o impacto em:
+Sempre pensar em:
 
-- Auth;
-- tabelas e colunas;
+- persistência após reload;
+- troca de sessão;
+- dois usuários simultâneos;
 - `couple_id`;
 - RLS;
 - `nook_version`;
-- RPCs;
 - Realtime;
-- Storage policies.
+- Storage privado;
+- Service Worker/cache quando assets mudarem.
 
-`setup.sql` deve ser tratado como baseline do contrato atual. Se o frontend e `setup.sql` divergirem, não afrouxe o backend silenciosamente: identifique a incompatibilidade e decida explicitamente qual lado deve mudar.
+## 3. `couple_id` é a principal fronteira de dados
 
-Nunca suponha que um filtro no JavaScript substitui autorização no banco.
-
-## 3. `couple_id` é uma fronteira de segurança
-
-Todo dado compartilhado deve pertencer ao casal atual.
+Todo dado compartilhado pertence ao casal atual.
 
 Regras obrigatórias:
 
-- Nunca fazer update/delete apenas por `id` quando o registro pertence a um casal.
-- Preservar `.eq('couple_id', couple)` nas mutações.
-- Preservar RLS no backend.
-- Não confiar em dados de uma sessão anterior.
-- Não permitir que uma resposta assíncrona atrasada de outro usuário/casal atualize o estado atual.
+- nunca fazer update/delete apenas por `id` quando o registro pertence a um casal;
+- preservar `.eq('couple_id', couple)` nas mutações;
+- preservar RLS no backend;
+- não permitir que resposta atrasada de sessão/casal anterior altere o estado atual;
+- não confiar em filtro JavaScript como barreira de autorização.
 
-## 4. O banco é a fonte de verdade
+## 4. Supabase é a fonte de verdade
 
 - Não mover dados compartilhados para `localStorage` como atalho.
-- Não aplicar optimistic update cego antes de confirmação do Supabase.
-- Depois de uma escrita bem-sucedida, usar o registro retornado pelo banco como versão canônica.
-- Ao recuperar conexão/foreground, preferir reconciliação com o backend.
+- Não aplicar optimistic update cego antes da confirmação do banco.
+- Depois de escrita bem-sucedida, usar o registro retornado pelo Supabase como versão canônica.
+- Ao reconectar/voltar de background, reconciliar com backend em vez de assumir que o estado em memória está correto.
 
-## 5. Preservar proteção contra concorrência
+## 5. Preservar controle de concorrência
 
 Para entidades versionadas:
 
 - não remover `nook_version`;
-- não remover filtros por versão em update/delete;
-- usar `captureEdit()` ao abrir formulários de edição;
-- usar `saveEdit()` / `saveFormEdit()` para salvar edições concorrentes;
-- tratar conflito como conflito, não como erro genérico nem overwrite silencioso.
+- não remover filtros de versão em update/delete;
+- usar `captureEdit()` ao abrir edição;
+- usar `saveEdit()` / `saveFormEdit()` para salvar;
+- tratar conflito como conflito, não como overwrite silencioso.
 
-Se uma alteração no schema remover `nook_version`, interrompa a implementação e alinhe primeiro o contrato do banco.
+Se uma mudança de schema remover `nook_version`, interrompa e alinhe o contrato antes de continuar.
 
-# Onde cada tipo de código deve ficar
+# Responsabilidade dos arquivos
 
 ## `js/app.js`
 
-Use apenas para:
+Use para:
 
-- boot da aplicação;
+- boot;
 - sessão;
 - roteamento de alto nível;
 - inicialização global;
 - eventos globais.
 
-Não colocar regra de domínio específica aqui.
+Não colocar regra específica de listas, finanças, mural etc.
 
 ## `js/store.js`
 
 Use para:
 
 - Supabase Auth;
-- leitura/escrita no banco;
+- acesso ao Postgres;
 - estado compartilhado em memória;
-- mapeamento row ↔ objeto de domínio;
+- row ↔ domínio;
+- CRUD;
+- controle de sessão/contexto;
+- filas/serialização de mutações;
+- `nook_version`;
 - Realtime;
-- proteção de sessão/contexto;
-- serialização de mutações;
 - operações comuns de Storage privado;
 - geração/validação de paths de foto;
-- resolução e cache em memória de signed URLs.
+- resolução/cache de signed URLs.
 
-Evite espalhar CRUD Supabase ou chamadas diretas de Storage pelos módulos. Avatar, capa e memórias devem usar os helpers existentes do `store` em vez de recriar upload, signed URL ou delete localmente.
+Evite chamadas diretas às tabelas ou ao Storage dentro dos módulos quando já existe helper no store.
 
 ## `js/rules.js`
 
@@ -112,33 +118,52 @@ Use para regras puras:
 
 - validação;
 - normalização;
+- dinheiro;
+- datas;
 - cálculos;
-- lógica de domínio sem DOM e sem Supabase.
+- regras de progresso/conclusão/undo de metas;
+- status de vencimento;
+- constantes de domínio sem DOM/rede.
 
-Uma função de `rules.js` deve, idealmente, poder ser testada apenas com argumentos e retorno.
+Constantes atuais importantes:
+
+```text
+OWNER.P1 = IS
+OWNER.P2 = VO
+OWNER.COUPLE = Casal
+GOAL_TYPE.FINANCIAL = financial
+GOAL_TYPE.HABIT = habit
+```
+
+Use essas constantes no código novo/alterado, mas não faça migração nem busca-e-substituição global apenas por estética.
+
+Uma função de `rules.js` deve idealmente ser testável apenas com argumento/retorno.
 
 ## `js/utils.js`
 
-Use para helpers transversais de UI/navegador, não para regra específica de um domínio.
-
-Exemplos apropriados:
+Use para helpers transversais de UI/navegador:
 
 - escaping;
 - formatação;
-- modais;
+- bottom sheets;
+- confirmação visual;
+- proteção de formulário não salvo;
 - haptics;
-- toasts;
-- guardas genéricas de ação assíncrona;
-- validação genérica de arquivo.
+- toast;
+- `runAction`;
+- validação genérica de arquivo;
+- helpers genéricos de edição.
+
+Não colocar regra de negócio específica aqui.
 
 ## `js/modules/*.js`
 
-Use para comportamento da view/domínio correspondente.
+Use para comportamento do domínio/view correspondente.
 
 Padrão esperado:
 
 ```text
-estado local pequeno do módulo
+estado local pequeno
 → renderX()
 → initX()
 → listeners chamam store/rules/utils
@@ -146,99 +171,259 @@ estado local pequeno do módulo
 
 Não transformar módulos de UI em segunda camada de persistência.
 
-# Convenções obrigatórias
+# Convenções obrigatórias de UI
 
-## Segurança de HTML
+## Bottom sheets e confirmações
 
-Quando inserir texto do usuário por `innerHTML`, use `escapeHTML`.
+A experiência normal do Nook **não deve usar**:
 
-Prefira `textContent` sempre que markup dinâmico não for necessário.
+```text
+alert()
+confirm()
+prompt()
+```
 
-Para imagens/URLs, use as funções de sanitização existentes ou uma solução equivalente explicitamente segura.
+Use:
 
-## Datas
+- `openConfirmSheet(...)` para confirmação relevante/destrutiva;
+- bottom sheets existentes para formulários;
+- `showToast(...)` para feedback curto não bloqueante.
 
-- Datas sem horário: `YYYY-MM-DD`.
-- Use os helpers de `rules.js` para validação e comparação.
-- Não depender de parsing implícito de timezone para regras de calendário.
+Antes de criar um modal novo, confirme se o `confirm-action-bottom-sheet` ou outro sheet existente resolve o caso.
 
-## Dinheiro
-
-- Não criar novos cálculos monetários com floats diretamente.
-- Use `cents()`, `safeCentSum()` e helpers relacionados.
-- Preserve centavos durante cálculos e só converta para unidade monetária para exibição/contrato já estabelecido.
-
-## Responsáveis
-
-Não substituir identificadores internos pelos nomes do usuário.
-
-Valores válidos em domínios compartilhados:
-
-- `IS`
-- `VO`
-- `Casal`
-
-Os nomes reais são apenas apresentação.
+A proteção contra descarte de formulário não salvo também usa o sistema visual atual. Não reintroduza `window.confirm()`.
 
 ## Ações assíncronas
 
-Para ações disparadas pela UI, use `runAction` quando aplicável para:
+Use `runAction()` quando aplicável para:
 
-- impedir repetição;
+- impedir duplo clique/double submit;
 - sinalizar saving;
-- tratar erro de forma consistente.
+- desabilitar ação temporariamente;
+- manter o formulário aberto se o `await` falhar;
+- padronizar feedback de erro.
 
-Não deixar botões dispararem gravações concorrentes idênticas por clique repetido.
+Erros conhecidos devem passar por `humanizeError()`/`runAction()` em vez de exibir mensagens técnicas cruas de Supabase/Postgres. Preserve o erro técnico no console para debug.
 
-## Inicialização
+## HTML seguro
 
-`initX()` deve ser chamado uma vez por ciclo de vida normal da página.
+- Prefira `textContent` quando não precisar de markup.
+- Ao inserir texto do usuário em `innerHTML`, use `escapeHTML`.
+- Não interpolar entrada de usuário diretamente em HTML/CSS.
+- Para imagens/URLs, use os helpers seguros existentes.
 
-Não reexecutar inicializadores para “forçar render”, porque isso pode duplicar event listeners. Para atualizar tela, chame `renderX()` ou dispare o evento de estado apropriado.
+## Estilos
+
+- Layout, cores, tipografia, gap, padding, borda, radius e estados visuais pertencem a `style.css`.
+- Valores dependentes dos dados podem continuar dinâmicos no JS.
+- Quando fizer sentido, use CSS custom property para progresso/percentual.
+- Não perseguir “zero `.style`” se o estilo for genuinamente dinâmico, como imagem de fundo, progresso ou gráfico.
+
+## Loading e movimento
+
+Skeleton existe apenas onde agrega valor:
+
+- Home;
+- recorte de Memórias dentro da Home;
+- Finanças;
+- Agenda.
+
+Não adicionar timer artificial. Assim que o dado chegar, mostrar conteúdo real.
+
+`prefers-reduced-motion` deve continuar reduzindo animações/transições sem quebrar comportamento funcional.
+
+Haptic deve ficar restrito a ações significativas. Não reintroduzir vibração em abertura de modal, navegação, foco ou clique trivial.
+
+Autofocus deve ser opt-in (`data-autofocus`) e não deve forçar teclado no mobile; o comportamento atual foca automaticamente apenas em pointer fino/desktop.
+
+# Regras de domínio importantes
+
+## Identidade do casal
+
+- `p1` e `p2` são slots internos.
+- `IS`, `VO` e `Casal` são identificadores internos usados por vários domínios.
+- Nomes reais são apresentação e não devem substituir identificadores internos.
+
+## `approved`
+
+No contrato atual, `nook_join()`:
+
+1. preenche `p2_email`;
+2. define `approved = true`.
+
+Portanto, na experiência atual, `approved = false` significa **parceiro ainda não conectado**, não “aguardando aprovação de administrador”.
+
+Não reintroduzir linguagem de aprovação manual sem mudar explicitamente o produto/backend.
+
+## Convite
+
+Use os dados já carregados em `store.profile`.
+
+- compartilhar com `navigator.share()` quando disponível;
+- fallback para `navigator.clipboard.writeText()`;
+- `AbortError` do share é cancelamento normal e não deve virar erro;
+- não hardcodar domínio/URL inexistente;
+- não criar fetch extra apenas para renderizar estado do convite.
+
+## Mood
+
+- o usuário pode editar somente o próprio mood;
+- parceiro é read-only;
+- mudança deve passar por `store.setMood()` / RPC `nook_set_mood`;
+- não atualizar mood diretamente na tabela pelo módulo.
+
+## Recados
+
+Durações suportadas pela UI:
+
+- 24 horas;
+- 72 horas;
+- 168 horas;
+- permanente (`expires_at = null`).
+
+Recado permanente deve usar `null` real, nunca data artificial distante.
+
+Reações canônicas:
+
+```text
+❤️
+😘
+☕
+```
+
+### Edição de recado
+
+A UI atual permite ao autor editar:
+
+- texto;
+- duração.
+
+Não muda:
+
+- autor;
+- data original;
+- cor;
+- reações.
+
+Use `captureEdit()` + `saveFormEdit()`.
+
+### Limitação de autoria
+
+`notes` ainda não possui um identificador estável de autor. A UI usa o texto `owner` para decidir se mostra a edição.
+
+Isso **não é uma barreira de segurança forte**.
+
+Se a tarefa exigir garantir no backend que somente o criador edita o recado:
+
+1. não invente lógica adicional por nome;
+2. proponha migração para um identificador estável (`created_by` ou equivalente);
+3. proponha policy/RPC correspondente;
+4. não altere `setup.sql` silenciosamente.
+
+## Metas
+
+Metas possuem dois tipos persistidos:
+
+```text
+financial
+habit
+```
+
+Regras obrigatórias:
+
+- conclusão é sempre derivada de `current >= target`;
+- não criar campo `completed`/`archived` para representar esse estado;
+- edição deve reutilizar `captureEdit()` + `saveFormEdit()` e preservar `current`, `history`, identidade e `nook_version`;
+- o tipo não deve ser trocado durante edição sem redesign explícito do histórico;
+- undo deve usar o último item do `history`, remover esse item e recalcular `current` pelo histórico restante;
+- não implementar undo como simples subtração presumida;
+- meta concluída continua com histórico/editar/excluir/undo acessíveis;
+- ao voltar a `current < target`, a meta retorna automaticamente para Em andamento;
+- seção Concluídas é estado de UI local e começa recolhida.
+
+Histórico financeiro deve continuar usando normalização em centavos; hábito deve continuar usando inteiros.
+
+## Memórias e fotos
+
+O viewer de memória usa dados já carregados e não deve fazer query adicional apenas para abrir.
+
+A grid usa `<img loading="lazy">` para fotos de memória.
+
+Compressão de fotos é centralizada em `store.uploadPhoto()`:
+
+```text
+maior lado: 1600 px
+formato: WebP
+qualidade: 0,82
+```
+
+GIF permanece original. Não duplicar compressão em onboarding/home/outros módulos.
+
+## Agenda
+
+- criação e edição usam o mesmo formulário;
+- edição deve usar `captureEdit()` + `saveFormEdit()`;
+- ao criar, preservar a data atualmente selecionada na Agenda;
+- autoria atual usa `created_by = p1/p2`;
+- não inferir autoria de compromisso legado sem `created_by`;
+- `confirmed = true` representa que ambos estão cientes; não transformar isso em sistema de RSVP.
+
+## Finanças
+
+- **A pagar** continua global;
+- resumo/acerto continua limitado ao mês selecionado;
+- status de vencimento de pendentes deve usar `expenseDueStatus()`;
+- despesa paga não deve mostrar atraso;
+- copy do acerto pode mudar, mas a matemática deve continuar vindo de `financialSummary().balance`.
 
 # Regras para Supabase
 
+## Baseline
+
+`setup.sql` é a fonte de verdade versionada do contrato atual.
+
+Se código e SQL divergirem:
+
+- não afrouxar RLS/policy para “fazer funcionar”;
+- identificar a incompatibilidade;
+- decidir explicitamente se o frontend ou backend está errado;
+- se houver mudança de banco, fornecer migração SQL explícita.
+
+`CREATE TABLE IF NOT EXISTS` não deve ser tratado como ferramenta de migração de uma tabela incompatível existente.
+
 ## Auth
 
-- Sempre derivar o usuário atual da sessão autenticada.
-- Ao sair, limpar completamente estado do casal.
-- Nunca reutilizar estado carregado antes da troca de sessão.
+- derivar usuário da sessão autenticada;
+- logout deve limpar estado compartilhado;
+- nunca reutilizar estado carregado antes de troca de sessão.
 
 ## RLS
 
-Toda nova tabela compartilhada deve ter policies explícitas que restrinjam acesso aos membros do `couple_id`.
+Toda tabela compartilhada precisa restringir acesso ao casal correto.
 
-Não considerar uma feature pronta enquanto a policy equivalente não estiver definida.
+Filtro de frontend não substitui RLS.
 
 ## RPC
 
-Use RPC quando uma operação precisa de autorização/atomicidade que não deve ficar sob controle direto do cliente.
+Use RPC quando autorização/atomicidade não deve ficar sob controle direto do cliente.
 
-Exemplos existentes:
+RPCs atuais importantes:
 
-- entrar no casal por convite;
-- atualizar somente o próprio humor.
+- `nook_join`;
+- `nook_set_mood`.
 
 ## Realtime
 
-Se uma nova tabela precisa sincronizar entre o casal:
+Para nova tabela compartilhada que precisa sincronizar:
 
-- incluir a tabela na configuração Realtime do backend;
-- adicionar reader correspondente ao mapa em `subscribeRealtime()`;
-- continuar filtrando contexto no frontend;
-- garantir RLS/Realtime authorization no backend.
+- configurar Realtime no backend;
+- adicionar reader no store;
+- preservar isolamento por contexto;
+- validar RLS/Realtime authorization.
 
 ## Storage
 
-Fotos do casal são dados privados.
-
-Ao trabalhar em Storage:
-
-- usar paths vinculados ao `couple_id`;
-- não criar um bucket global público apenas para simplificar a UI;
-- não persistir signed URLs com expiração como valor permanente;
-- preferir persistir o storage path e resolver acesso autorizado no momento da leitura;
-- manter policies coerentes com o formato de path.
+Bucket `photos` é privado.
 
 Contrato atual:
 
@@ -248,67 +433,86 @@ Contrato atual:
 <couple_id>/memories/...
 ```
 
-Use `store.uploadPhoto`, `store.resolvePhotoUrl`/`store.getPhotoDisplayUrl` e `store.deletePhoto`. Não reintroduza `getPublicUrl()` para o bucket privado. URLs antigas `http://`/`https://` podem continuar sendo renderizadas apenas pela compatibilidade já existente; não persista novas URLs desse tipo.
+Use:
+
+- `store.uploadPhoto(...)`;
+- `store.resolvePhotoUrl(...)`;
+- `store.getPhotoDisplayUrl(...)`;
+- `store.deletePhoto(...)`.
+
+`store.uploadPhoto()` também é o ponto central de compressão. Não criar compressão paralela em módulo de avatar, capa ou memória.
+
+Nunca:
+
+- tornar bucket público para simplificar UI;
+- reintroduzir `getPublicUrl()` para novas fotos;
+- persistir signed URL temporária no banco.
+
+URLs antigas `http://`/`https://` podem continuar sendo lidas pela camada de compatibilidade existente, mas não devem ser geradas como novo formato de persistência.
 
 # PWA e Service Worker
 
 O Service Worker deve continuar simples.
 
-- Cachear shell e dependências estáticas.
-- Não interceptar Auth, Data API, Realtime ou endpoints de dados privados.
-- Não criar fila offline de mutações sem um design explícito de reconciliação.
-- Se alterar arquivos estáticos usados pelo app, incrementar `CACHE_NAME`.
-- Se adicionar/remover arquivo essencial, atualizar `LOCAL_ASSETS`.
-- Não usar `skipWaiting`/`clients.claim` sem analisar risco de misturar versões durante sessão ativa.
+- Cachear app shell e dependências estáticas.
+- Não interceptar Auth, Data API, Realtime ou Storage privado.
+- Não criar fila offline de mutações sem design explícito de reconciliação.
+- Ao alterar asset estático, incrementar `CACHE_NAME`.
+- Ao adicionar/remover arquivo essencial, revisar `LOCAL_ASSETS`.
+- URLs externas em `OPTIONAL_ASSETS` devem ser **exatamente as mesmas** usadas por `index.html`.
+- Não usar versões genéricas como `@2` se o HTML usa uma versão fixada.
+- Não usar `skipWaiting`/`clients.claim` sem analisar risco de mistura de versões durante sessão ativa.
 
-# Como implementar uma feature
+Versões atuais:
 
-Antes de escrever código:
+```text
+Supabase JS: 2.118.0
+Phosphor Web: 2.1.2
+Cache: nook-v1.13
+```
 
-1. Leia o `STATUS.md` e confirme que a nova feature não ignora um blocker atual.
-2. Identifique a regra de domínio.
-3. Identifique o contrato do banco e as policies necessárias.
-4. Determine o menor módulo existente que deve receber a mudança.
-5. Evite criar arquivo/pasta nova se a responsabilidade já pertence claramente a um módulo atual.
+# Inicialização e listeners
 
-Durante a implementação:
+`initX()` deve instalar listeners uma única vez por ciclo normal.
 
-1. Regras puras em `rules.js`.
-2. Persistência/estado em `store.js`.
-3. DOM no módulo da feature.
-4. Markup em `index.html`.
-5. Estilo em `style.css`.
-6. Backend SQL/RLS/RPC versionado quando necessário.
-7. Cache PWA revisado se houver alteração de assets.
+Não chamar repetidamente um inicializador apenas para atualizar tela.
 
-Depois da implementação:
+Para atualização, usar:
 
-1. Execute validação de sintaxe dos JS.
-2. Teste o fluxo feliz.
-3. Teste reload após persistência.
-4. Teste logout/login com outra conta.
-5. Para dados compartilhados, teste P1 e P2.
-6. Para edição, teste conflito entre dois clientes.
-7. Para Realtime, teste mudança em um cliente refletindo no outro.
-8. Para Storage, teste path por `couple_id`, autorização P1/P2, reload, substituição/exclusão e resolução novamente após URL temporária expirar.
+- `renderX()`;
+- evento de estado;
+- helper específico.
 
-# Testes mínimos antes de considerar uma mudança pronta
+Quando um módulo realmente precisar ser inicializado em mais de uma etapa do roteamento, ele deve ser idempotente/protegido contra listeners duplicados, como ocorre em `settings.js`.
 
-## Autenticação
+# Testes mínimos antes de considerar mudança pronta
 
-- cadastro/login;
+## Sempre
+
+- JS sem erro de sintaxe;
+- IDs/seletores alterados existem;
+- imports/exports consistentes;
+- fluxo feliz;
+- reload após persistência;
+- cancelar ação não produz efeito;
+- erro não é tratado como sucesso.
+
+## Auth/contexto
+
+- login;
 - sessão existente;
 - logout;
-- troca de conta no mesmo navegador.
+- troca de conta no mesmo navegador;
+- dados do casal anterior não reaparecem.
 
-## Isolamento
+## Casal
 
-- P1/P2 do mesmo casal veem os mesmos dados;
-- casal diferente não acessa dados do primeiro casal.
+- P1 e P2 do mesmo casal veem o mesmo dado;
+- outro casal não acessa esse dado.
 
 ## CRUD
 
-Para o domínio alterado:
+Quando o domínio suporta:
 
 - criar;
 - reload;
@@ -317,74 +521,94 @@ Para o domínio alterado:
 - excluir;
 - reload.
 
+Para Metas, testar também:
+
+- concluir por `current >= target`;
+- editar target mudando o estado;
+- undo financeiro;
+- undo de hábito;
+- concluída → ativa após undo.
+
 ## Concorrência
 
 Quando aplicável:
 
-- abrir o mesmo registro em dois clientes;
+- abrir mesmo registro em dois clientes;
 - salvar no primeiro;
 - tentar salvar no segundo;
-- confirmar que o segundo recebe conflito em vez de sobrescrever.
+- segundo deve receber conflito, não sobrescrever silenciosamente.
 
 ## PWA
 
-Se arquivos estáticos mudaram:
+Se asset estático mudou:
 
-- confirmar novo `CACHE_NAME`;
-- abrir após refresh;
-- confirmar que não há mistura de versões;
-- confirmar que API/Auth continuam fora do cache.
+- incrementar `CACHE_NAME`;
+- confirmar URLs CDN sincronizadas;
+- confirmar cache novo;
+- confirmar que API/Auth não entram no cache.
+
+## Storage
+
+- upload;
+- path iniciado por `couple_id`;
+- reload;
+- visualização por P1/P2;
+- substituição;
+- exclusão;
+- outro casal sem acesso.
 
 # O que evitar
 
-- Não migrar para React/Vue/Svelte apenas por preferência do agente.
-- Não adicionar TypeScript/build system como “melhoria automática”.
-- Não criar Repository/Service/Controller layers artificiais para um projeto deste tamanho.
-- Não duplicar regras entre módulos.
-- Não mover cálculos financeiros para a UI.
-- Não usar `innerHTML` com entrada de usuário sem escaping.
-- Não afrouxar RLS para fazer uma query “funcionar”.
-- Não tornar Storage público para contornar policies.
-- Não remover filtros de `couple_id` ou `nook_version`.
-- Não guardar dados compartilhados de usuário em chaves globais de `localStorage`.
-- Não tratar erro de rede como “lista vazia”.
-- Não capturar exceções críticas e seguir silenciosamente como se a operação tivesse funcionado.
-- Não inicializar o mesmo módulo repetidamente para atualizar a tela.
-- Não adicionar funcionalidade nova enquanto houver regressão de persistência/segurança no fluxo que ela depende.
+- Migração de framework sem dor concreta.
+- TypeScript/build system “porque é melhor”.
+- Layers artificiais de arquitetura enterprise.
+- Regra duplicada em vários módulos.
+- Cálculo financeiro dentro de handler de DOM.
+- `innerHTML` inseguro.
+- `alert()`/`confirm()`/`prompt()` na experiência normal.
+- RLS afrouxada para resolver bug de frontend.
+- Storage público para contornar policy.
+- Update/delete sem `couple_id`.
+- Remoção de `nook_version` sem redesign explícito.
+- Dados compartilhados em chaves globais de `localStorage`.
+- Erro de rede transformado em “lista vazia”.
+- Inicializador chamado várias vezes para forçar render.
+- Feature nova em cima de regressão de persistência/segurança conhecida.
 
-# Política para mudanças grandes
+# Mudanças grandes
 
-Uma mudança é considerada grande se envolver qualquer um destes itens:
+Considere grande qualquer mudança envolvendo:
 
-- novo framework/toolchain;
+- framework/toolchain;
 - novo serviço externo;
-- alteração ampla do schema;
-- mudança no modelo `couple_id`;
-- mudança de Auth;
-- reestruturação de `store.js`;
-- novo modelo de offline sync;
-- mudança do bucket/policies de Storage;
-- remoção do versionamento de conflito.
+- Auth;
+- modelo `couple_id`;
+- schema amplo;
+- RLS/RPC crítica;
+- grande reestruturação do store;
+- offline sync;
+- mudança de bucket/policies;
+- remoção de versionamento de conflito.
 
-Nesses casos, primeiro documente:
+Antes de implementar, documentar:
 
 - problema concreto;
 - solução proposta;
 - alternativa mais simples;
-- impacto no backend;
 - impacto em dados existentes;
-- estratégia de rollback;
-- smoke tests necessários.
-
-Só então implemente.
+- impacto no backend;
+- rollback;
+- smoke tests.
 
 # Atualização da documentação
 
-Após uma sessão relevante:
+Após sessão relevante:
 
-- Atualize `STATUS.md` com o estado real, arquivos alterados, bugs abertos e próxima ação.
-- Atualize `PROJECT.md` apenas se mudou algo estrutural/permanente: stack, arquitetura, domínio, convenção ou decisão arquitetural.
-- Atualize `AGENTS.md` apenas se mudou a forma como agentes devem trabalhar no projeto.
+- atualizar `STATUS.md` sempre que mudar estado real, riscos ou próxima ação;
+- atualizar `PROJECT.md` somente quando mudar arquitetura, fluxo permanente, regra de negócio ou decisão estrutural;
+- atualizar `AGENTS.md` quando mudar a forma correta de agentes trabalharem;
+- atualizar `Nook-ROADMAP.md` quando item for concluído, repriorizado ou descartado;
+- atualizar comentário de `setup.sql` somente se ele ficar factualmente incorreto; nunca alterar SQL funcional apenas para “sincronizar documentação”.
 
-Nunca usar `PROJECT.md` como lista de tarefas.
-Nunca usar `STATUS.md` como documentação arquitetural completa.
+Não usar `PROJECT.md` como lista de tarefas.
+Não usar `STATUS.md` como documentação arquitetural completa.

@@ -1,640 +1,563 @@
-# Objetivo do projeto
+# PROJECT — Nook
 
-Nook é uma aplicação web progressiva (PWA) privada para organizar a vida de um casal em um único espaço compartilhado. O produto centraliza atividades, compromissos, finanças da casa, metas, memórias, recados e check-ins de humor, com sincronização entre as duas pessoas.
+# 1. Objetivo do produto
 
-O produto foi desenhado primeiro para uso pessoal e mobile-first. A prioridade arquitetural atual é manter uma base simples, compreensível e confiável: frontend estático em HTML/CSS/JavaScript, Supabase como backend e poucos níveis de abstração.
+Nook é uma PWA privada para organizar a vida de um casal em um único espaço compartilhado.
 
-Cada instalação lógica do produto gira em torno de um **Nook**, identificado por `couple_id`, ao qual podem pertencer duas contas autenticadas (`p1` e `p2`). O banco é a fonte de verdade dos dados compartilhados; o frontend mantém apenas estado em memória e uma preferência local de tema.
+O produto centraliza pequenas necessidades recorrentes do dia a dia:
 
-# Stack tecnológica
+- humor;
+- listas e tarefas;
+- compromissos;
+- finanças da casa;
+- metas;
+- memórias;
+- mural de recados;
+- preferências do app.
+
+A proposta não é virar um ERP doméstico nem um mensageiro. O valor do Nook está em reunir exatamente o que o casal usa com frequência em uma experiência íntima, leve e simples.
+
+O produto foi desenhado primeiro para uso pessoal e mobile-first.
+
+Prioridades arquiteturais:
+
+1. simplicidade;
+2. confiabilidade;
+3. segurança/isolamento por casal;
+4. UX mobile;
+5. manutenção por uma única pessoa;
+6. poucas dependências e pouca abstração.
+
+# 2. Modelo mental principal
+
+Cada espaço compartilhado é um **Nook**, identificado por `couple_id`.
+
+Um Nook possui até duas contas autenticadas:
+
+- `p1` — criador/primeira pessoa;
+- `p2` — parceiro que entra pelo código.
+
+O banco é a fonte de verdade dos dados compartilhados.
+
+O frontend mantém:
+
+- estado em memória;
+- cache temporário de signed URLs de fotos;
+- preferência local de tema.
+
+Não existe banco local de dados compartilhados.
+
+# 3. Stack tecnológica
 
 ## Frontend
 
-- **HTML5** em `index.html`, contendo as views e bottom sheets da SPA.
-- **CSS puro** em `style.css`, com layout mobile-first, variáveis visuais, light/dark mode e componentes próprios.
-- **JavaScript ES Modules** sem framework e sem etapa de build.
-- **Web APIs do navegador**: `crypto.randomUUID`, `CustomEvent`, `navigator.clipboard`, `navigator.vibrate`, Service Worker, Cache API, File API e `matchMedia`.
+- HTML5 em `index.html`;
+- CSS puro em `style.css`;
+- JavaScript ES Modules;
+- sem framework;
+- sem etapa de build;
+- sem `package.json`;
+- sem state manager externo.
 
-## Backend e dados
+Web APIs usadas atualmente:
 
-- **Supabase Auth** para cadastro, login, sessão e logout.
-- **Supabase Postgres** para persistência dos dados do casal.
-- **Supabase Realtime** para sincronização entre os dois usuários/dispositivos.
-- **Supabase Storage** para fotos de avatar, capa e memórias.
-- **Postgres RPCs** esperadas pelo frontend:
-  - `nook_join`
-  - `nook_set_mood`
-- O modelo de segurança depende de **Row Level Security (RLS)** no Supabase para isolar cada casal por `couple_id`.
+- `crypto.randomUUID()`;
+- `CustomEvent`;
+- `navigator.clipboard`;
+- `navigator.share`;
+- `navigator.vibrate`;
+- Service Worker;
+- Cache API;
+- File API;
+- `matchMedia`.
 
-## Bibliotecas externas carregadas por CDN
+## Backend
 
-- `@supabase/supabase-js@2.118.0`: cliente Supabase.
-- `@phosphor-icons/web@2.1.2`: ícones.
-- `mobile-drag-drop@2.3.0-rc.2`: suporte a drag-and-drop em mobile para listas.
-- `canvas-confetti@1.6.0`: feedback visual ao atingir marcos de metas e ao usar a roleta de decisão.
-- **Unsplash**: imagens pré-definidas de capa do dashboard.
+Supabase fornece:
 
-## PWA
+- Auth;
+- Postgres;
+- Realtime;
+- Storage;
+- RPCs.
 
-- `manifest.json` define instalação, ícones, orientação e aparência standalone.
-- `sw.js` implementa cache do app shell e das dependências CDN opcionais.
-- O Service Worker deliberadamente não intercepta Auth, Data API, Realtime ou conteúdo remoto do Supabase.
+O contrato do backend está versionado em:
 
-# Arquitetura
+```text
+setup.sql
+```
 
-A aplicação é uma **SPA sem framework**. A navegação troca a view ativa no DOM; não existe roteador por URL.
+## Dependências externas por CDN
 
-A arquitetura se divide em quatro camadas práticas:
+Versões atuais:
 
-1. **Shell e composição visual** — `index.html` e `style.css`.
-2. **Bootstrap e roteamento de estado** — `js/app.js` e `js/modules/navigation.js`.
-3. **Estado, sessão e persistência** — `js/store.js`.
-4. **Regras puras e módulos de domínio/UI** — `js/rules.js`, `js/utils.js` e `js/modules/*.js`.
+- `@supabase/supabase-js@2.118.0`;
+- `@phosphor-icons/web@2.1.2`;
+- `mobile-drag-drop@2.3.0-rc.2`;
+- `canvas-confetti@1.6.0`.
+
+O `sw.js` usa exatamente as mesmas URLs/versionamentos das dependências externas carregadas pelo `index.html`.
+
+# 4. Estrutura do projeto
+
+```text
+/
+├─ index.html
+├─ style.css
+├─ manifest.json
+├─ sw.js
+├─ setup.sql
+├─ AGENTS.md
+├─ PROJECT.md
+├─ STATUS.md
+├─ Nook-ROADMAP.md
+├─ img/
+│  ├─ icon.svg
+│  ├─ icon-192.png
+│  └─ icon-512.png
+└─ js/
+   ├─ app.js
+   ├─ store.js
+   ├─ rules.js
+   ├─ utils.js
+   └─ modules/
+      ├─ navigation.js
+      ├─ onboarding.js
+      ├─ home.js
+      ├─ lists.js
+      ├─ agenda.js
+      ├─ goals.js
+      ├─ finances.js
+      └─ settings.js
+```
+
+# 5. Arquitetura
+
+A aplicação é uma SPA sem framework e sem roteamento por URL.
+
+A navegação ativa/desativa views já presentes no DOM.
+
+A arquitetura prática é dividida em quatro blocos:
+
+1. **Shell e visual** — `index.html` + `style.css`;
+2. **Boot/roteamento** — `app.js` + `navigation.js`;
+3. **Estado/persistência** — `store.js`;
+4. **Regras/helpers/módulos** — `rules.js`, `utils.js`, `modules/*.js`.
 
 ## `index.html`
 
-Contém todas as views principais da aplicação e seus bottom sheets. As telas principais são:
+Contém:
 
 - login/cadastro;
-- criação ou entrada em um Nook;
-- acesso aguardando aprovação;
-- onboarding do casal;
+- criar/entrar em Nook;
+- tela de espera do parceiro;
+- onboarding;
 - Home;
 - Listas;
-- Finanças;
 - Agenda;
+- Finanças;
 - Metas;
-- Configurações.
+- Ajustes;
+- bottom sheets reutilizados pelos módulos.
 
-A aplicação não gera templates em servidor. Cada módulo encontra elementos pelo `id`, preenche conteúdo e associa listeners.
+A bottom navigation possui exatamente 5 destinos principais:
+
+```text
+Início | Listas | Agenda | Finanças | Metas
+```
+
+Ajustes é uma área secundária acessada pela engrenagem na Home.
 
 ## `js/app.js`
 
-É o ponto de entrada do frontend. Suas responsabilidades são:
+Responsável por:
 
-- registrar o Service Worker;
+- registrar Service Worker;
 - verificar sessão;
-- decidir qual view deve aparecer;
-- inicializar os módulos uma única vez;
-- alternar login e cadastro;
-- criar ou entrar em um Nook;
-- reagir a eventos globais de sincronização e perfil.
+- carregar perfil;
+- decidir a view inicial;
+- criar/entrar no Nook;
+- inicializar módulos;
+- coordenar o loading inicial;
+- reagir a eventos globais.
+
+Não contém regra específica de domínio.
 
 ## `js/store.js`
 
-É o principal boundary de dados do frontend. Centraliza:
+É o boundary central de dados.
+
+Responsabilidades:
 
 - cliente Supabase;
-- sessão e identificação do usuário atual;
-- perfil e `couple_id` atual;
-- coleções compartilhadas em memória;
-- conversão banco ↔ domínio;
-- validação antes de persistir;
-- CRUD das tabelas compartilhadas;
-- proteção contra respostas antigas e troca de sessão;
-- serialização de mutações concorrentes;
-- optimistic concurrency por `nook_version`;
-- Realtime e refresh ao voltar para foreground/reconectar;
-- operações de fotos privadas (`uploadPhoto`, `resolvePhotoUrl`, `deletePhoto`);
-- geração de paths por `couple_id`;
-- cache em memória de signed URLs.
+- Auth/sessão;
+- `currentUserEmail`;
+- perfil;
+- `couple_id`;
+- estado compartilhado em memória;
+- mapping row ↔ domínio;
+- CRUD;
+- validação antes de gravar;
+- `nook_version`;
+- filas/serialização de mutações;
+- proteção contra respostas atrasadas;
+- Realtime;
+- refresh em foreground/reconexão;
+- Storage privado;
+- signed URLs de fotos;
+- cache temporário de URLs de fotos.
 
-Os módulos de UI não devem conversar diretamente com as tabelas Postgres nem conhecer detalhes de Supabase Storage para operações comuns. O contrato de persistência e Storage fica centralizado em `store.js`.
+Os módulos não devem recriar CRUD Supabase quando o store já oferece a operação.
 
 ## `js/rules.js`
 
-Contém regras puras, sem DOM, sessão ou chamadas de rede. É responsável por:
+Contém lógica pura:
 
-- validação de números e datas;
-- cálculo monetário em centavos;
+- datas;
+- números;
+- dinheiro em centavos;
 - resumo financeiro;
-- cálculo de divisão proporcional;
-- normalização de itens de listas e histórico de metas;
-- validação de contas e metas;
-- progresso e forecast de metas;
-- cálculo de dias juntos;
-- conjunto canônico de reações do mural (`❤️`, `😘`, `☕`).
+- divisão proporcional;
+- status de vencimento de despesas;
+- validação de despesas/metas;
+- normalização de listas/histórico de metas;
+- progresso/forecast de metas;
+- recálculo/undo do último lançamento de meta;
+- dias juntos;
+- whitelist canônica de reações;
+- constantes de domínio simples (`OWNER`, `GOAL_TYPE`).
 
-Essa separação é importante porque mantém regras críticas independentes da UI.
+Constantes atuais:
+
+```text
+OWNER.P1 = IS
+OWNER.P2 = VO
+OWNER.COUPLE = Casal
+GOAL_TYPE.FINANCIAL = financial
+GOAL_TYPE.HABIT = habit
+```
+
+Essas constantes não representam migração de dados. Os valores persistidos continuam iguais.
+
+Reações atuais:
+
+```text
+❤️
+😘
+☕
+```
 
 ## `js/utils.js`
 
-Agrupa utilidades transversais de UI e segurança, incluindo:
+Helpers transversais de UI/navegador:
 
-- escaping de HTML;
-- tratamento de imagens;
-- formatação monetária;
-- avatares;
-- controle de bottom sheets;
-- prevenção de fechamento com edição não salva;
-- feedback háptico;
+- escaping;
+- formatação;
+- avatar;
+- bottom sheets;
+- confirmação visual;
+- proteção contra descarte de formulário;
 - toast;
-- `runAction` para controlar ações assíncronas;
-- validação de arquivo de imagem;
-- helpers para edição com conflito.
+- haptic;
+- `runAction`;
+- `humanizeError`;
+- autofocus opt-in em pointer fino/desktop;
+- validação genérica de imagem;
+- helpers de edição com conflito.
+
+`runAction()` é o mecanismo atual para:
+
+- evitar double submit;
+- desabilitar submit durante gravação;
+- manter o formulário aberto quando a operação falha;
+- mostrar erro humano sem esconder o erro técnico do console.
+
+A experiência normal não usa `alert()`, `confirm()` ou `prompt()` nativos.
 
 ## `js/modules/`
 
-Cada arquivo representa um domínio visual/funcional:
+### `navigation.js`
 
-- `navigation.js`: troca das views principais.
-- `onboarding.js`: nomes, data do relacionamento e avatares.
-- `home.js`: dashboard, humor, memórias, recados e capa.
-- `lists.js`: listas, tarefas, prioridades, filtros, reordenação e decisão aleatória.
-- `agenda.js`: calendário semanal/mensal e compromissos.
-- `goals.js`: metas financeiras e hábitos.
-- `finances.js`: modelo de divisão, contas, pagamentos, histórico e acerto.
-- `settings.js`: tema, código de convite e logout.
+- navegação entre views;
+- render da view ativa;
+- acesso a Ajustes;
+- proteção de navegação durante loading/saving.
 
-# Fluxos principais
+### `onboarding.js`
 
-## 1. Inicialização e autenticação
+- nomes;
+- data inicial;
+- avatar por emoji/foto;
+- upload privado de avatar.
+
+### `home.js`
+
+- hero/capa;
+- dias juntos;
+- humor;
+- resumo do dia;
+- memórias;
+- viewer de memória;
+- lazy loading das imagens da grid;
+- cápsula temporal;
+- mural de recados;
+- reações;
+- criação/edição/exclusão de recados.
+
+### `lists.js`
+
+- listas;
+- itens;
+- prioridades;
+- filtros;
+- drag-and-drop;
+- roleta de decisão;
+- pendentes/concluídas em seções separadas;
+- concluídas recolhidas por padrão;
+- limpar concluídas;
+- renomear/excluir lista.
+
+### `agenda.js`
+
+- datas;
+- visão semanal/mensal;
+- compromissos;
+- criação e edição pelo mesmo formulário;
+- preservação da data selecionada ao criar;
+- autoria via `created_by`;
+- confirmação/ciente;
+- exclusão.
+
+### `goals.js`
+
+- metas financeiras;
+- hábitos;
+- criação e edição pelo mesmo formulário;
+- progresso;
+- histórico;
+- undo do último lançamento;
+- separação entre ativas e concluídas;
+- conclusão derivada de `current >= target`;
+- forecast;
+- milestones/confetti discreto ao concluir.
+
+### `finances.js`
+
+- modelo de divisão;
+- despesas;
+- pago/pendente;
+- status de vencimento;
+- resumo mensal;
+- categorias;
+- acerto entre o casal com copy explicativa.
+
+### `settings.js`
+
+- tema;
+- estado do parceiro;
+- código de convite;
+- copiar convite;
+- compartilhar convite;
+- logout.
+
+# 6. Fluxo de autenticação e entrada
 
 ```text
-Navegador
-↓
-index.html
-↓
-js/app.js
+Abre app
 ↓
 store.checkSession()
-├─ sem sessão → Login/Cadastro
-└─ com sessão → store.fetchProfile()
-                ↓
-                existe Nook?
-                ├─ não → Criar ou entrar por convite
-                └─ sim → approved?
-                         ├─ não → Tela de acesso pendente
-                         └─ sim → store.init()
-                                  ↓
-                                  carrega dados + Realtime
-                                  ↓
-                                  perfil completo?
-                                  ├─ não → Onboarding
-                                  └─ sim → Home
+├─ sem sessão
+│  └─ Login/Cadastro
+│
+└─ com sessão
+   ↓
+   store.fetchProfile()
+   ├─ sem Nook
+   │  └─ Criar Nook ou entrar por código
+   │
+   └─ com Nook
+      ├─ approved = false
+      │  └─ Aguardando seu parceiro
+      │     ├─ copiar código
+      │     ├─ compartilhar convite
+      │     └─ verificar conexão
+      │
+      └─ approved = true
+         ├─ perfil incompleto → Onboarding
+         └─ perfil completo → Home + store.init() + Realtime
 ```
 
-## 2. Criação de um Nook
+## Semântica atual de `approved`
+
+No modelo atual, `approved` não representa aprovação manual por administrador.
+
+A RPC `nook_join()` faz:
 
 ```text
-Usuário autenticado sem perfil
-↓
-Criar novo Nook
-↓
-store.createNewNook()
-↓
-Gera invite_code aleatório
-↓
-INSERT em profiles com p1_email
-↓
-Perfil fica associado ao casal
-↓
-Fluxo de aprovação/liberação
+p2_email = email do segundo usuário
+approved = true
 ```
 
-## 3. Entrada por convite
+Logo:
 
 ```text
-Usuário autenticado sem Nook
-↓
-Informa invite_code
-↓
-store.joinNook(code)
-↓
-RPC nook_join
-↓
-Backend valida convite e associação
-↓
-store.fetchProfile()
-↓
-Usuário passa a pertencer ao mesmo couple_id
+approved = false → parceiro ainda não entrou
+approved = true  → segundo membro conectado
 ```
 
-## 4. Onboarding do casal
+Se esse significado mudar no futuro, frontend e SQL devem ser redesenhados juntos.
+
+# 7. Convite
+
+O criador recebe `invite_code` ao criar o Nook.
+
+Antes de P2 entrar:
+
+- a tela principal de espera mostra o código;
+- o código pode ser copiado;
+- o convite pode ser compartilhado nativamente.
+
+Compartilhamento:
 
 ```text
-Perfil aprovado, porém incompleto
-↓
-Nomes + data inicial + avatar opcional
-↓
-Upload privado via `store.uploadPhoto('avatars', ...)`, se necessário
-↓
-Banco recebe apenas o storage path
+navigator.share disponível
+→ abre share sheet nativo
+
+não disponível / falha não-abort
+→ fallback para clipboard
+```
+
+`AbortError` significa cancelamento voluntário e não é erro para o usuário.
+
+Depois que P2 entra:
+
+- `approved = true`;
+- Ajustes mostra **Parceiro conectado ✓**;
+- convite deixa de ser ação principal.
+
+# 8. Onboarding
+
+Após os dois membros estarem conectados, se o perfil ainda estiver incompleto:
+
+```text
+nomes
++ data inicial
++ avatar opcional
 ↓
 store.setProfile()
 ↓
-UPDATE profiles
-↓
 nook:profile-saved
 ↓
-Roteamento para Home
+Home
 ```
 
-## 5. Leitura de dados compartilhados
+Avatar pode ser:
+
+- foto;
+- emoji;
+- iniciais como fallback.
+
+Fotos novas usam Storage privado.
+
+# 9. Persistência e concorrência
+
+## Leitura
 
 ```text
 store.init()
 ↓
 fetchFinances + fetchRecords + fetchMoods
 ↓
-Supabase/Postgres filtrado por couple_id
+Supabase
 ↓
-Conversão de rows para objetos do domínio
+row → domínio
 ↓
-Estado em memória do store
+estado em memória
 ↓
-Módulos renderizam a UI
+render
 ```
 
-## 6. Mutação de registros
+## Escrita
 
 ```text
-Interação do usuário
-↓
-Módulo funcional
+interação
 ↓
 runAction()
 ↓
-store.saveRecord() / store.deleteRecord()
+store.saveRecord()/deleteRecord()
 ↓
-Validação de domínio
+validação
 ↓
-Confirma couple_id e geração da sessão
+confirma couple_id/contexto
 ↓
-Serializa mutação da mesma entidade
+Supabase
 ↓
-Supabase CRUD com couple_id e nook_version
+registro confirmado
 ↓
-Banco confirma operação
+estado local
 ↓
-Atualiza estado local
-↓
-Evento nook:data-updated
-↓
-Re-render da view ativa
+nook:data-updated
 ```
 
-## 7. Edição com proteção contra conflito
+## Edição versionada
 
 ```text
-Abrir edição
+captureEdit()
 ↓
-store.captureEdit()
+snapshot + nook_version
 ↓
-Snapshot + fingerprint + nook_version
+usuário edita
 ↓
-Usuário edita
+saveEdit()/saveFormEdit()
 ↓
-store.saveEdit()
+UPDATE por id + couple_id + nook_version
 ↓
-Confere se registro local mudou
-↓
-UPDATE ... WHERE id + couple_id + nook_version
-↓
-Banco atualiza ou sinaliza conflito
+conflito ou sucesso
 ```
 
-O objetivo é impedir sobrescrita cega quando o parceiro ou outro dispositivo alterou o mesmo registro.
+O objetivo é impedir lost update silencioso entre dispositivos.
 
-## 8. Sincronização Realtime
+# 10. Realtime
+
+Mudanças do banco são reconciliadas pelo store.
+
+Fluxo:
 
 ```text
-Mudança no Postgres
+mudança Postgres
 ↓
 Supabase Realtime
 ↓
 store.subscribeRealtime()
 ↓
-Ignora eventos de outro couple_id
+filtra contexto
 ↓
-Agrupa tabelas alteradas por ~300 ms
+debounce/tabelas sujas
 ↓
-Refaz leitura apenas das tabelas sujas
+refetch específico
 ↓
 nook:data-updated
-↓
-UI ativa re-renderiza
 ```
 
-Ao retornar para foreground ou recuperar conexão, `store.refreshData()` também reconcilia o estado com o banco.
+O primeiro `SUBSCRIBED` após a carga inicial não refaz imediatamente todas as consultas.
 
-## 9. Listas e tarefas
+Reconexões posteriores podem disparar refresh.
+
+Também há refresh ao voltar para foreground/online.
+
+RLS continua sendo a camada de autorização real; filtro de frontend não substitui RLS.
+
+# 11. Storage de fotos
+
+Bucket:
 
 ```text
-Listas
-↓
-Seleciona/cria lista
-↓
-Itens com responsável + prioridade + concluído
-↓
-Reordenação / edição / conclusão
-↓
-Lista inteira é persistida com items em estrutura composta
+photos
 ```
 
-Listas do tipo `decision` habilitam uma roleta que escolhe aleatoriamente um item pendente e pode marcá-lo como concluído.
+Privado.
 
-## 10. Agenda
-
-```text
-Agenda
-↓
-Seleciona data / visão
-↓
-Cria compromisso
-↓
-Responsável + data + hora + confirmação
-↓
-Registro em agenda
-↓
-Home também exibe compromissos do dia
-```
-
-## 11. Metas
-
-```text
-Nova meta
-├─ Financeira → alvo monetário + saldo + prazo opcional
-└─ Hábito → alvo inteiro + unidade
-↓
-Atualização de progresso
-↓
-Novo lançamento no histórico
-↓
-Marcos 25/50/75/100%
-↓
-Feedback háptico/confetti
-```
-
-## 12. Finanças
-
-```text
-Configura regra de divisão
-↓
-50/50 | proporcional | 100% P1 | 100% P2 | conta conjunta | customizado
-↓
-Cadastra contas
-↓
-Descrição + valor + categoria + vencimento + pagador
-↓
-Marca como paga
-↓
-Resumo financeiro e histórico mensal
-↓
-Quando aplicável, calcula acerto entre o casal
-```
-
-## 13. Humor
-
-```text
-Usuário autenticado
-↓
-Seleciona o próprio humor do dia
-↓
-store.setMood()
-↓
-RPC nook_set_mood
-↓
-Tabela moods
-↓
-Realtime atualiza o parceiro
-```
-
-Cada pessoa só deve atualizar o próprio humor.
-
-## 14. Memórias e recados
-
-```text
-Home
-├─ Memória → título + data + nota + foto opcional
-│            ↓
-│            store.uploadPhoto('memories', ...) + tabela memories
-│            banco persiste somente o storage path
-│
-└─ Recado → texto + cor + duração
-             ↓
-             tabela notes com expires_at
-             ↓
-             reações limitadas
-```
-
-Memórias antigas que completam aniversário na data atual podem aparecer como cápsula temporal.
-
-## 15. PWA e offline do shell
-
-```text
-Primeira carga
-↓
-Service Worker instala
-↓
-Cache do HTML/CSS/JS/ícones + CDNs opcionais
-↓
-Próximas cargas podem abrir o shell pelo cache
-↓
-Dados compartilhados continuam dependendo do Supabase
-```
-
-O cache é intencionalmente voltado ao **app shell**, não a uma base de dados offline.
-
-# Regras de negócio
-
-## Casal, identidade e acesso
-
-- Cada espaço compartilhado é identificado por `couple_id`.
-- As duas posições lógicas do casal são `p1` e `p2`.
-- O vínculo do usuário autenticado com `p1`/`p2` é determinado pelo e-mail do Supabase Auth comparado a `p1_email` e `p2_email` do perfil.
-- O aplicativo só libera dados quando existe perfil, `couple_id`, usuário vinculado e `approved === true`.
-- Um usuário que já participa de um Nook não pode criar outro pelo fluxo atual.
-- O criador não pode usar o próprio código de convite para entrar novamente no mesmo Nook.
-- Códigos recebidos pelo fluxo de convite aceitam 6–12 caracteres alfanuméricos; códigos novos são gerados com 8 caracteres maiúsculos.
-
-## Perfil
-
-- O casal precisa ter nome para `p1`, nome para `p2` e data inicial para completar o onboarding.
-- A data inicial precisa ser válida, a partir de 1900, e não pode estar no futuro.
-- Avatar pode ser foto, emoji ou fallback de iniciais.
-- Fotos privadas persistem como storage path; signed URL é apenas um detalhe temporário de renderização.
-- O tema é preferência local do navegador e pode ser `system`, `light` ou `dark`.
-
-## Responsáveis
-
-Vários domínios usam os valores internos:
-
-- `IS`: primeira pessoa (`p1`).
-- `VO`: segunda pessoa (`p2`).
-- `Casal`: responsabilidade conjunta.
-
-A UI converte esses identificadores para os nomes reais do perfil.
-
-## Humor
-
-- Humores aceitos: `energia`, `cansado`, `lanche`, `apaixonado`, `estresse`, `feliz`.
-- O humor é diário.
-- O usuário só deve conseguir alterar o próprio humor.
-
-## Listas
-
-- Tipos atuais: `standard` e `decision`.
-- Cada item precisa de ID único dentro da lista, texto não vazio, responsável válido e `completed` booleano.
-- Prioridades aceitas: `none`, `urgent`, `casual`.
-- Itens inválidos são isolados na leitura e o conteúdo bruto é preservado para evitar perda silenciosa.
-- Uma lista com itens inválidos não deve ser sobrescrita até os dados serem revisados.
-- A roleta de decisão considera apenas itens ainda não concluídos.
-
-## Agenda
-
-- Todo compromisso precisa de título, data válida e horário em formato válido.
-- Compromissos são atribuídos a um responsável.
-- Eventos do dia aparecem também na Home.
-
-## Finanças
-
-- Uma conta precisa de descrição, valor maior que zero, vencimento válido e pagador válido.
-- Valores monetários críticos são convertidos para centavos durante cálculos para reduzir erros de ponto flutuante.
-- Categorias atuais: `moradia`, `mercado`, `lazer`, `transporte`, `outros`.
-- Modelos de divisão aceitos: `50/50`, `proportional`, `100-p1`, `100-p2`, `single`, `custom`.
-- No modelo proporcional, se as duas rendas forem zero, o fallback é 50/50.
-- Modos de acerto usados pela UI: `transfer` e `prioritize`.
-- O card de acerto entre as pessoas só é exibido para modelos em que esse cálculo faz sentido na UI atual.
-- Dados financeiros inválidos devem ser excluídos dos cálculos e sinalizados ao usuário, em vez de quebrar silenciosamente o resumo.
-- O indicador global **A pagar** pode considerar pendências fora do mês selecionado.
-- O **resumo/gráfico do mês selecionado** considera apenas despesas cuja `date` pertença àquele mês.
-
-## Metas
-
-- Tipos atuais: `financial` e `habit`.
-- Toda meta precisa de título e alvo positivo.
-- Meta de hábito aceita apenas quantidades inteiras.
-- Meta financeira é normalizada monetariamente.
-- Prazo é opcional, mas, quando informado, precisa ser uma data válida.
-- Cada contribuição guarda data, nome do autor, `personId` e valor.
-- Histórico inválido é isolado e impede alterações destrutivas até revisão.
-- Progresso visual é limitado a 100%; antes de concluir, usa no máximo 99%.
-
-## Memórias
-
-- Título é obrigatório.
-- Data precisa ser válida.
-- Foto é opcional.
-- Foto privada é persistida como path `<couple_id>/memories/...`; a UI resolve uma signed URL em memória.
-- Uma memória de anos anteriores com mesmo mês/dia da data atual pode ser destacada como cápsula temporal.
-
-## Recados
-
-- Texto é obrigatório.
-- Durações criadas pela UI: 24, 72 ou 168 horas.
-- Reações aceitas: `❤️`, `😘`, `☕`.
-- Datas de criação/expiração precisam ser parseáveis.
-
-## Concorrência e integridade
-
-- Operações sobre a mesma entidade são serializadas no frontend.
-- Escritas aguardando fila são canceladas se sessão/casal mudarem.
-- Edições e exclusões exigem `nook_version`.
-- Uma edição deve falhar se a versão do registro mudou desde que o formulário foi aberto.
-- O estado local só é atualizado após confirmação do banco.
-- Respostas atrasadas de uma sessão/casal antigo não podem poluir o estado atual.
-
-# Padrões utilizados
-
-## Store centralizado
-
-`store.js` funciona simultaneamente como store de estado, service de sessão e camada de acesso a dados. Para o tamanho atual do projeto, isso reduz complexidade e evita múltiplas abstrações.
-
-## Módulos por domínio
-
-Cada domínio possui um módulo de UI próprio com funções `init...` e `render...`. A inicialização instala listeners; o render lê o `store` e atualiza o DOM.
-
-## Regras puras
-
-Cálculos e validações relevantes ficam em `rules.js`, separados de DOM e rede.
-
-## Event-driven UI
-
-Eventos customizados desacoplam parte do fluxo:
-
-- `nook:data-updated`
-- `nook:profile-saved`
-- `nook:sync-error`
-
-## Pessimistic/confirmed writes
-
-O frontend espera confirmação do Supabase antes de consolidar a mutação no estado local. Isso privilegia confiabilidade sobre sensação de instantaneidade.
-
-## Optimistic concurrency control
-
-Apesar das escritas confirmadas, a concorrência entre clientes é tratada com `nook_version`: updates/deletes só afetam a versão que o usuário abriu.
-
-## Normalização defensiva
-
-Estruturas compostas vindas do banco, como `lists.items` e `goals.history`, são normalizadas. Entradas inválidas são separadas sem apagar o valor bruto original.
-
-## Progressive enhancement de PWA
-
-O app funciona como site e adiciona instalação/cache quando Service Worker está disponível.
-
-# Convenções do projeto
-
-- Manter **JavaScript simples, ES Modules e sem framework** enquanto a complexidade não justificar migração.
-- Evitar novas dependências quando Web APIs ou helpers locais resolvem o problema.
-- Centralizar acesso a tabelas Supabase em `store.js` sempre que possível.
-- Colocar regras puras/validação em `rules.js`, não dentro do DOM handler.
-- Usar `utils.js` somente para comportamento transversal e reutilizável.
-- Cada domínio visual deve permanecer em `js/modules/<dominio>.js`.
-- Funções de inicialização seguem o padrão `initX`; renderização segue `renderX`.
-- IDs internos `IS`, `VO` e `Casal` não devem ser trocados pelos nomes visíveis do casal no banco.
-- Datas de domínio são armazenadas como `YYYY-MM-DD`; data/hora de recados usa ISO.
-- Valores monetários devem ser calculados via helpers de centavos, evitando aritmética financeira direta com floats.
-- Toda saída de texto de usuário inserida em HTML deve passar por `escapeHTML` quando não for atribuída via `textContent`.
-- URLs/imagens devem passar pelas funções seguras existentes antes de serem usadas em CSS/HTML.
-- Fotos do bucket `photos` devem usar helpers do `store`, path iniciado por `couple_id` e nunca persistir signed URL.
-- Ações assíncronas iniciadas por UI devem preferir `runAction` para evitar duplo clique e padronizar erro/estado de saving.
-- Formulários de edição devem usar `captureEdit`/`saveFormEdit` quando a entidade suporta controle de versão.
-- Nunca atualizar ou excluir um registro apenas por `id`; preservar o filtro por `couple_id` e, para entidades versionadas, por `nook_version`.
-- Não fazer update otimista cego em memória antes do banco confirmar a gravação.
-- Ao mudar arquivos estáticos servidos pelo Service Worker, incrementar `CACHE_NAME` em `sw.js` para evitar mistura de versões.
-- Não adicionar API/Auth/Realtime do Supabase ao cache do Service Worker.
-- Preservar mobile-first e o padrão de bottom sheets para ações secundárias/formulários.
-
-# Dependências importantes
-
-## Supabase Auth
-
-Responsável pela identidade. O e-mail autenticado é usado para mapear a conta ao slot `p1` ou `p2` do perfil.
-
-## Supabase Postgres
-
-Tabelas esperadas pelo frontend:
-
-- `profiles`
-- `finances`
-- `moods`
-- `expenses`
-- `lists`
-- `agenda`
-- `goals`
-- `memories`
-- `notes`
-
-As tabelas compartilhadas dependem de `couple_id`; as coleções editáveis também dependem do contrato de `nook_version` criado no banco.
-
-## Supabase RPC
-
-### `nook_join`
-
-Realiza o ingresso seguro do segundo usuário por código de convite. Essa operação não deve ser substituída por update direto do perfil pelo cliente sem preservar as regras de autorização do backend.
-
-### `nook_set_mood`
-
-Atualiza o humor da pessoa autenticada, permitindo ao backend decidir qual coluna (`p1`/`p2`) pode ser alterada.
-
-## Supabase Realtime
-
-Mantém os dois clientes sincronizados. O frontend escuta alterações e refaz a leitura das tabelas impactadas.
-
-## Supabase Storage
-
-Armazena imagens privadas do casal no bucket `photos`. O contrato atual é:
+Paths atuais:
 
 ```text
 <couple_id>/avatars/...
@@ -642,141 +565,642 @@ Armazena imagens privadas do casal no bucket `photos`. O contrato atual é:
 <couple_id>/memories/...
 ```
 
-O banco persiste o **storage path**. `store.resolvePhotoUrl()` gera signed URL temporária para exibição e mantém um cache somente em memória. URLs antigas `http://`/`https://` ainda são aceitas temporariamente para compatibilidade, sem migração automática. O bucket possui limite de 8 MB e MIME types permitidos definidos em `setup.sql`.
+Persistência:
 
-## CDN de terceiros
+- banco guarda storage path;
+- signed URL não é persistida;
+- signed URL é resolvida apenas para renderização;
+- cache de signed URL existe apenas em memória da sessão.
 
-Supabase JS `2.118.0`, Phosphor Icons Web `2.1.2`, mobile-drag-drop `2.3.0-rc.2` e canvas-confetti `1.6.0` são carregados da rede com versões explícitas. O Service Worker tenta cacheá-los como assets opcionais, mas a indisponibilidade de uma CDN na primeira carga pode degradar funcionalidades associadas.
+Helpers centrais:
 
-# Estrutura resumida
+- `store.uploadPhoto()`;
+- `store.resolvePhotoUrl()`;
+- `store.getPhotoDisplayUrl()`;
+- `store.deletePhoto()`.
+
+## Compressão de upload
+
+`store.uploadPhoto()` comprime imagens antes do upload usando APIs nativas.
+
+Contrato atual:
 
 ```text
-Nook/
-├── index.html
-├── style.css
-├── manifest.json
-├── sw.js
-├── setup.sql
-├── AGENTS.md
-├── PROJECT.md
-├── STATUS.md
-├── Nook-ROADMAP.md
-├── img/
-│   ├── icon.svg
-│   ├── icon-192.png
-│   └── icon-512.png
-└── js/
-    ├── app.js
-    ├── store.js
-    ├── rules.js
-    ├── utils.js
-    └── modules/
-        ├── navigation.js
-        ├── onboarding.js
-        ├── home.js
-        ├── lists.js
-        ├── agenda.js
-        ├── goals.js
-        ├── finances.js
-        └── settings.js
+maior lado: 1600 px
+formato: WebP
+qualidade: 0,82
 ```
 
-# Arquivos essenciais
+JPEG/PNG/WebP passam pelo pipeline.
 
-- `index.html` — define o shell da SPA, views, formulários, navegação e bottom sheets.
-- `style.css` — concentra o design system e os estilos responsivos/light-dark do produto.
-- `js/app.js` — bootstrap, autenticação e roteamento principal de estado.
-- `js/store.js` — contrato central de sessão, estado, Supabase, CRUD, concorrência e Realtime.
-- `js/rules.js` — regras puras, validações e cálculos de negócio.
-- `js/utils.js` — helpers de UI, segurança de saída, modais e ações assíncronas.
-- `js/modules/home.js` — composição do dashboard e domínios de humor, memórias, recados e capa.
-- `js/modules/lists.js` — lógica completa de listas/tarefas e decisão rápida.
-- `js/modules/finances.js` — contas, divisão e acerto financeiro.
-- `js/modules/agenda.js` — compromissos e navegação temporal.
-- `js/modules/goals.js` — metas, histórico e progresso.
-- `js/modules/onboarding.js` — configuração inicial do casal e avatares.
-- `sw.js` — estratégia de cache/versão da PWA.
-- `manifest.json` — metadados de instalação da PWA.
-- `setup.sql` — baseline versionado do contrato Supabase: schema, RLS, RPCs, Realtime e Storage.
-- `AGENTS.md` — instruções permanentes para agentes que alterarem o projeto.
-- `STATUS.md` — estado atual, riscos, validação pendente e próxima ação.
-- `Nook-ROADMAP.md` — prioridades de produto/engenharia e histórico de itens planejados/concluídos.
+GIF permanece original para preservar animação.
 
-# Decisões arquiteturais
+Se a compressão falhar, o upload falha com feedback; o original não é enviado silenciosamente.
+
+Compatibilidade:
+
+- valores antigos começando com `http://` ou `https://` ainda podem ser exibidos;
+- novas gravações não devem voltar ao modelo de URL pública.
+
+# 12. Listas
+
+Tipos:
+
+- `standard`;
+- `decision`.
+
+Cada item possui:
+
+- ID;
+- texto;
+- responsável;
+- prioridade;
+- estado concluído.
+
+Responsáveis persistidos:
+
+```text
+IS
+VO
+Casal
+```
+
+Prioridades:
+
+```text
+none
+urgent
+casual
+```
+
+Funcionalidades atuais relevantes:
+
+- criar lista;
+- renomear com bottom sheet;
+- excluir lista com confirmação visual;
+- criar/editar/excluir item;
+- concluir/desmarcar item;
+- pendentes sempre visíveis;
+- concluídas em seção recolhível por lista;
+- contadores respeitam filtro ativo;
+- limpar concluídas definitivamente;
+- reordenar;
+- filtrar;
+- roleta de decisão para itens pendentes.
+
+O estado aberto/recolhido das concluídas é apenas local de UI e não é persistido.
+
+A implementação atual ainda cria DOM para itens de todas as listas e esconde os que não pertencem à lista ativa. Isso é aceitável no volume atual e permanece como P2 de performance, não como bug aberto.
+
+# 13. Agenda
+
+Compromissos possuem:
+
+- título;
+- data;
+- hora;
+- responsável;
+- subtítulo opcional;
+- `confirmed`;
+- `created_by`;
+- `nook_version`.
+
+Funcionalidades atuais:
+
+- criar compromisso;
+- editar pelo mesmo formulário;
+- edição versionada com `captureEdit()` + `saveFormEdit()`;
+- preservar a data atualmente selecionada ao criar;
+- mostrar `Criado por você` ou `Criado por <parceiro>` quando `created_by` existe;
+- parceiro pode marcar **Ciente**;
+- criador não precisa confirmar o próprio compromisso;
+- `confirmed = true` significa **Ambos cientes**;
+- excluir com confirmação visual.
+
+Compromissos legados sem `created_by` não permitem inferir autoria com segurança.
+
+# 14. Finanças
+
+Modelos suportados:
+
+```text
+50/50
+proportional
+100-p1
+100-p2
+single
+custom
+```
+
+Modos de acerto persistidos:
+
+```text
+transfer
+next
+```
+
+Categorias:
+
+```text
+moradia
+mercado
+lazer
+transporte
+outros
+```
+
+Regra importante:
+
+- **A pagar** é indicador global de pendências;
+- **Resumo do mês** considera somente despesas cuja `date` pertence ao mês selecionado.
+
+Cálculos monetários críticos usam centavos.
+
+## Vencimento
+
+Despesa pendente recebe status derivado por data:
+
+```text
+Vence hoje
+Vence amanhã
+Vence em N dias
+Atrasada há N dias
+```
+
+Despesa paga não recebe copy de atraso.
+
+A regra pura fica em `expenseDueStatus()` em `rules.js`.
+
+## Acerto
+
+A apresentação usa o mês selecionado e os nomes reais do casal.
+
+Exemplo:
+
+```text
+Para equilibrar as contas de outubro de 2026:
+Luis transfere R$ X para Ana
+```
+
+A matemática continua vindo de `financialSummary().balance`. Não existe segundo cálculo no módulo.
+
+# 15. Metas
+
+Tipos persistidos:
+
+```text
+financial
+habit
+```
+
+Meta possui:
+
+- título;
+- ícone;
+- responsável;
+- alvo;
+- atual;
+- unidade;
+- prazo opcional;
+- histórico;
+- `nook_version`.
+
+Meta financeira usa normalização monetária.
+Meta de hábito usa quantidades inteiras.
+
+Constantes usadas por código novo:
+
+```text
+OWNER.P1 = IS
+OWNER.P2 = VO
+OWNER.COUPLE = Casal
+GOAL_TYPE.FINANCIAL = financial
+GOAL_TYPE.HABIT = habit
+```
+
+## Edição
+
+O mesmo bottom sheet serve para criar e editar.
+
+Edição usa `captureEdit()` + `saveFormEdit()` e altera somente:
+
+- título;
+- ícone;
+- responsável;
+- alvo;
+- prazo;
+- unidade quando aplicável.
+
+Preserva:
+
+- identidade;
+- tipo;
+- `current`;
+- `history`;
+- `created_at`;
+- `nook_version`.
+
+## Conclusão
+
+Não existe flag `completed`.
+
+Regra única:
+
+```text
+current >= target → concluída
+current < target  → em andamento
+```
+
+Concluídas ficam em seção recolhível e não mostram CTA de contribuição, mas mantêm histórico, editar, excluir e undo.
+
+## Histórico e undo
+
+Cada contribuição/progresso grava entrada no `history`.
+
+Ao desfazer:
+
+```text
+remove último item do history
+→ recalcula current pelo history restante
+→ salva registro versionado
+```
+
+O recalculo fica em regra pura (`calculateGoalCurrentFromHistory` / `undoLastGoalProgress`).
+
+Uma meta pode voltar automaticamente de concluída para ativa após undo ou após edição do target.
+
+# 16. Mood
+
+Valores atuais:
+
+```text
+energia
+cansado
+lanche
+apaixonado
+estresse
+feliz
+```
+
+O mood é diário.
+
+Cada usuário:
+
+- vê seu estado;
+- recebe microcopy **Toque para alterar**;
+- pode trocar o próprio mood a qualquer momento no dia.
+
+Parceiro:
+
+- é read-only;
+- recebe microcopy **Somente leitura**;
+- tentativa de interação gera toast, não diálogo bloqueante.
+
+Persistência passa pela RPC `nook_set_mood`.
+
+# 17. Memórias
+
+Memória possui:
+
+- título;
+- data;
+- nota opcional;
+- foto opcional;
+- `nook_version`.
+
+Foto privada persiste como Storage path.
+
+Funcionalidades atuais:
+
+- grid compacta;
+- `<img loading="lazy" decoding="async">`;
+- viewer em bottom sheet com foto maior, data, título e nota;
+- editar/excluir a partir do viewer;
+- edição reaproveita fluxo existente;
+- cápsula temporal para mesma data em ano anterior.
+
+O viewer usa os dados já carregados.
+
+Ao substituir/excluir foto, o store tenta remover o objeto privado anterior quando seguro.
+
+# 18. Mural de recados
+
+Recado possui:
+
+- texto;
+- cor;
+- `owner` textual;
+- data de criação;
+- `expires_at` opcional;
+- reações;
+- `nook_version`.
+
+## Duração
+
+Opções da UI:
+
+```text
+24 horas
+3 dias
+7 dias
+Até eu remover
+```
+
+`Até eu remover` persiste `expires_at = null`.
+
+## Reações
+
+Reações canônicas:
+
+```text
+❤️
+😘
+☕
+```
+
+## Edição
+
+O autor pode editar:
+
+- texto;
+- duração.
+
+Não altera:
+
+- autor;
+- data original;
+- cor;
+- reações.
+
+Edição usa `captureEdit()` + `saveFormEdit()`.
+
+## Limitação de autoria
+
+A UI identifica autoria comparando `note.owner` com o nome retornado por `store.getAuthorName()`.
+
+Isso é suficiente para o MVP pessoal atual, mas não constitui autorização forte.
+
+Se a regra “somente o autor edita” precisar ser garantida no backend, deve existir migração futura para identificador de autor estável e policy/RPC correspondente.
+
+# 19. Sistema de feedback e confirmação
+
+A UI evita APIs bloqueantes nativas.
+
+Estado atual:
+
+```text
+alert()   = 0
+confirm() = 0
+prompt()  = 0
+```
+
+Padrões:
+
+- `showToast()` → feedback curto;
+- `openConfirmSheet()` → ações relevantes/destrutivas;
+- bottom sheets → formulários;
+- proteção de formulário sujo → confirmação visual reutilizando o mesmo sistema.
+
+# 20. Loading
+
+Durante a hidratação inicial, existem skeletons para:
+
+- Home;
+- memórias dentro da Home;
+- Finanças;
+- Agenda.
+
+Regras:
+
+- nenhum timer artificial;
+- conteúdo real aparece assim que dados chegam;
+- animação é CSS;
+- `prefers-reduced-motion` reduz animações/transições de forma global sem remover comportamento funcional.
+
+# 21. PWA e Service Worker
+
+`manifest.json` define instalação/ícones/aparência standalone.
+
+`sw.js` cacheia:
+
+- app shell;
+- JS/CSS/HTML local;
+- ícones;
+- dependências CDN opcionais.
+
+Não intercepta:
+
+- Auth;
+- Data API;
+- Realtime;
+- Storage privado.
+
+Cache atual:
+
+```text
+nook-v1.13
+```
+
+Versões externas sincronizadas:
+
+```text
+Supabase JS 2.118.0
+Phosphor Web 2.1.2
+```
+
+O PWA é **app-shell offline**, não offline-first de dados.
+
+Não existe fila de mutações offline.
+
+# 22. Eventos internos
+
+Eventos principais:
+
+- `nook:data-updated`;
+- `nook:profile-saved`;
+- `nook:sync-error`.
+
+Servem para desacoplar store/boot/render sem introduzir framework de estado.
+
+# 23. Convenções de projeto
+
+- JavaScript simples e ES Modules.
+- Mobile-first.
+- Reusar módulos existentes.
+- Regra pura em `rules.js`.
+- Persistência em `store.js`.
+- UI de domínio em `modules/`.
+- Helper transversal em `utils.js`.
+- Texto de usuário precisa de escaping quando inserido como HTML.
+- Dinheiro calculado em centavos.
+- Datas de domínio sem horário em `YYYY-MM-DD`.
+- IDs internos não são substituídos por nomes de apresentação.
+- Ação assíncrona prefere `runAction`.
+- Edição versionada usa `captureEdit/saveFormEdit`.
+- Update/delete preserva `couple_id`.
+- Storage privado nunca usa `getPublicUrl()` para novas gravações.
+- Bottom sheets/toasts substituem diálogos nativos.
+- Alteração de asset exige revisão/incremento de `CACHE_NAME`.
+- URLs CDN do Service Worker devem ser iguais às do HTML.
+
+# 24. Backend esperado
+
+## Tabelas
+
+- `profiles`
+- `agenda`
+- `expenses`
+- `finances`
+- `goals`
+- `lists`
+- `memories`
+- `moods`
+- `notes`
+
+## RPCs
+
+### `nook_join(text)`
+
+Entrada segura do segundo membro por código.
+
+Atualiza `p2_email` e `approved` atomicamente.
+
+### `nook_set_mood(text, date)`
+
+Permite atualizar apenas o slot de mood pertencente ao usuário autenticado.
+
+## RLS
+
+Tabelas compartilhadas usam policies baseadas na participação do usuário no `couple_id`.
+
+## `nook_version`
+
+Usado por:
+
+- agenda;
+- expenses;
+- finances;
+- goals;
+- lists;
+- memories;
+- notes.
+
+Triggers incrementam versão em update.
+
+# 25. Decisões arquiteturais atuais
 
 ## Vanilla JS em vez de framework
 
-A aplicação é pequena e pessoal. HTML/CSS/JS puro reduz toolchain, dependências, configuração e curva de manutenção. O custo é maior disciplina manual para estado, listeners, renderização e consistência do DOM conforme o app crescer.
+Mantido porque:
+
+- escopo ainda cabe na arquitetura;
+- não há build/deploy complexo;
+- owner precisa conseguir entender/manter;
+- migração agora adicionaria custo sem resolver uma dor concreta.
+
+## Store centralizado
+
+`store.js` concentra mais responsabilidades do que uma arquitetura enterprise recomendaria, mas reduz complexidade para o tamanho atual.
+
+Só dividir quando houver dor real.
 
 ## Supabase como backend completo
 
-Auth, banco, Realtime, RPC e Storage ficam no mesmo serviço. Isso acelera o desenvolvimento e reduz infraestrutura própria. Em troca, o frontend depende fortemente do schema, policies, functions e configuração do projeto Supabase.
+Auth, Postgres, RLS, Realtime, Storage e RPCs ficam no mesmo serviço, reduzindo superfície operacional.
 
-## Estado em memória + backend como fonte de verdade
+## Backend como fonte de verdade
 
-Dados de negócio não são persistidos em `localStorage`. Isso evita herança de dados entre contas no mesmo navegador e simplifica o modelo de consistência. O custo é que o app não oferece edição offline real; apenas o shell pode abrir sem rede.
+Dados compartilhados não dependem de `localStorage`.
 
-## `couple_id` como boundary multiusuário
+## `couple_id` como boundary
 
-Toda informação compartilhada pertence a um casal. Esse desenho simplifica sincronização e consultas, mas torna RLS e constraints do banco essenciais: falhas nas policies podem causar vazamento entre casais.
+É a principal dimensão de isolamento multiusuário.
 
-## Versionamento para conflito
+## Confirmed writes
 
-`nook_version` evita lost updates quando os dois usuários alteram o mesmo registro. O custo é exigir triggers/colunas corretos no banco e tratamento explícito de conflito no frontend.
+A UI espera confirmação do banco antes de consolidar estado local.
 
-## Registros compostos em JSON para listas/histórico
+## Optimistic concurrency
 
-Itens de lista e histórico de metas são armazenados dentro do registro pai. Isso deixa o MVP simples e reduz tabelas/joins, mas aumenta o tamanho de updates e cria conflitos no nível do registro inteiro, mesmo quando pessoas alteram itens diferentes.
+`nook_version` protege contra sobrescrita silenciosa.
 
-## App shell offline, dados online
+## App shell offline
 
-O Service Worker cacheia a interface, mas não tenta ser uma base de dados offline. Isso evita reconciliação complexa, ao custo de funcionalidade reduzida sem conexão.
+Mantém PWA simples. Offline completo de dados exigiria reconciliação muito mais complexa.
 
-# Pontos de atenção
+# 26. Pontos de atenção
 
-- **O backend está versionado como baseline em `setup.sql`.** Isso torna o contrato atual reconstruível, mas futuras mudanças incompatíveis de schema ainda devem usar SQL explícito de migração; `CREATE TABLE IF NOT EXISTS` não evolui tabelas antigas automaticamente.
-- **O contrato de Storage privado está alinhado no código e em `setup.sql`.** Ainda é necessário validar o ambiente Supabase implantado com smoke test real e manter compatibilidade temporária com URLs antigas já salvas.
-- **A chave publishable e a URL do Supabase estão hardcoded em `store.js`.** Isso é aceitável para uma chave pública quando RLS está correta, mas dificulta ambientes distintos e troca de projeto.
-- **`store.js` concentra muitas responsabilidades.** É adequado ao tamanho atual, mas pode virar gargalo se o produto crescer muito.
-- **Listeners são instalados por inicialização única.** Novas chamadas repetidas a `initX` devem ser evitadas para não duplicar handlers.
-- **Grande parte da UI depende de IDs do DOM.** Renomear elementos em `index.html` exige revisar os módulos associados.
-- **Listas e históricos compostos são atualizados como um bloco.** Há risco de conflito mais frequente em uso simultâneo.
-- **Não há suíte de testes automatizados nem configuração de build/lint no snapshot.** As regras puras são boas candidatas para testes futuros.
-- **CDNs são dependências de runtime.** O cache ajuda depois da primeira carga, mas não elimina a dependência inicial.
-- **Realtime assina mudanças de todo o schema `public` e filtra `couple_id` no cliente.** A confidencialidade não pode depender desse filtro; deve depender de RLS/Realtime authorization no backend.
-- **Algumas mensagens de erro ainda citam `INSTRUCOES.md`, mas esse arquivo não existe.** Como `setup.sql` virou a referência real do backend, essas mensagens devem ser atualizadas futuramente.
+## Smoke test real ainda é obrigatório
 
-# Como adicionar uma nova funcionalidade
+A implementação foi validada estaticamente, mas a baseline atual ainda precisa de teste completo com P1/P2 no Supabase real.
 
-Em alto nível:
+## Autoria de `notes`
 
-1. **Defina a regra de negócio.** Se houver validação ou cálculo independente de UI, adicione em `js/rules.js`.
-2. **Defina o contrato de dados.** Se precisar de nova tabela/coluna/RPC, atualize primeiro o schema/RLS do Supabase e versione esse SQL no projeto.
-3. **Atualize `store.js`.** Adicione mapeamento de campos, validação, fetch e método de persistência quando a feature tiver dados próprios.
-4. **Crie ou estenda um módulo em `js/modules/`.** Mantenha DOM/render/listeners dentro do domínio correspondente.
-5. **Adicione o markup necessário em `index.html`.** Reutilize os padrões existentes de cards, views e bottom sheets.
-6. **Adicione estilos em `style.css`.** Preserve tokens/variáveis e comportamento mobile-first.
-7. **Integre a renderização/navegação.** Se for uma nova view principal, atualize `navigation.js` e a barra de navegação. Se for parte de uma view existente, prefira manter no módulo atual.
-8. **Garanta isolamento por casal e concorrência.** Toda nova persistência compartilhada deve respeitar `couple_id`, RLS e estratégia equivalente de versionamento se houver edição concorrente.
-9. **Verifique sincronização.** Inclua a nova tabela no mapa de Realtime se ela precisar aparecer no dispositivo do parceiro imediatamente.
-10. **Atualize o cache da PWA.** Se novos arquivos estáticos forem adicionados ou o shell for alterado, revise `LOCAL_ASSETS` e incremente `CACHE_NAME`.
-11. **Faça smoke test em dois usuários/dispositivos.** Valide criação, reload, edição simultânea, logout/login e sincronização.
+É a principal limitação estrutural nova conhecida.
 
-# Glossário
+Não tentar “resolver” com mais comparação de nomes no frontend se a necessidade virar segurança real.
 
-- **Nook** — o espaço digital privado compartilhado pelo casal.
-- **`couple_id`** — identificador do casal e principal chave de isolamento de dados.
-- **`p1` / `p2`** — slots das duas pessoas no perfil.
-- **`IS` / `VO` / `Casal`** — identificadores internos usados como responsáveis em vários domínios; a UI os traduz para nomes do perfil.
-- **Invite code** — código que permite ao segundo usuário entrar no mesmo Nook.
-- **`approved`** — flag de liberação do perfil antes de permitir acesso ao app compartilhado.
-- **`nook_version`** — versão do registro usada para detectar conflito de edição/exclusão.
-- **Store** — objeto central em `js/store.js` que mantém sessão, estado em memória e comunicação com Supabase.
-- **Bottom sheet** — painel/modal que sobe da parte inferior da tela e concentra formulários e ações secundárias.
-- **Decision list** — lista com roleta aleatória para escolher um dos itens pendentes.
-- **Settlement / acerto** — cálculo de quem deve compensar quem após pagamentos compartilhados.
-- **Capsule memory** — memória de ano anterior destacada quando o mês/dia coincide com a data atual.
-- **App shell** — HTML/CSS/JS/ícones necessários para abrir a interface da PWA, independentemente dos dados remotos.
-- **RLS** — Row Level Security do Postgres/Supabase; principal camada de autorização dos dados por casal.
-- **RPC** — função Postgres exposta pelo Supabase para executar uma operação controlada no backend.
-- **Realtime** — canal do Supabase que avisa o cliente sobre mudanças no banco para sincronizar o parceiro.
+## Sem testes automatizados
+
+`rules.js` já concentra regras puras de dinheiro, datas, finanças, listas e metas e é o melhor primeiro candidato.
+
+## `store.js` grande
+
+Monitorar, mas não dividir preventivamente.
+
+## Chave/URL Supabase no cliente
+
+A publishable key pode ficar no frontend quando RLS está correta. O problema maior é configuração de ambientes, não segredo.
+
+## Realtime
+
+A segurança real depende de RLS/authorization, não de filtro no cliente.
+
+## Compromissos antigos sem `created_by`
+
+A UI atual usa `created_by` para autoria/“Ciente”. Registros legados sem esse valor não devem receber autoria inferida.
+
+## Renderização de Listas
+
+Ainda cria DOM para todas as listas e esconde itens fora da lista ativa. Manter enquanto não houver evidência de problema; otimizar apenas por dor real.
+
+## CDNs
+
+A primeira carga ainda depende de rede/CDN; o Service Worker ajuda nas cargas posteriores.
+
+# 27. Como adicionar uma funcionalidade
+
+1. Leia `STATUS.md` e confirme que não está ignorando blocker atual.
+2. Defina regra de negócio.
+3. Verifique se exige mudança de schema/RLS/RPC.
+4. Se regra for pura, use `rules.js`.
+5. Persistência/estado em `store.js`.
+6. UI no módulo existente mais próximo.
+7. Markup em `index.html`.
+8. Estilo em `style.css`.
+9. Reutilize bottom sheets/toast/confirm existentes.
+10. Garanta `couple_id` e concorrência.
+11. Integre Realtime se necessário.
+12. Se asset estático mudou, revise `sw.js` e incremente cache.
+13. Teste com duas contas quando o dado for compartilhado.
+14. Atualize documentação correspondente.
+
+# 28. Glossário
+
+- **Nook** — espaço privado do casal.
+- **`couple_id`** — identificador do casal e principal fronteira de dados.
+- **`p1` / `p2`** — slots dos dois membros.
+- **`IS` / `VO` / `Casal`** — identificadores internos de responsabilidade.
+- **Invite code** — código usado por P2 para entrar no Nook.
+- **`approved`** — no fluxo atual, flag que se torna `true` quando P2 entra.
+- **`nook_version`** — versão usada para detectar conflito de edição/exclusão.
+- **Store** — objeto central de sessão, estado e Supabase.
+- **Bottom sheet** — painel/modal inferior usado para formulários/ações.
+- **Decision list** — lista com roleta para itens pendentes.
+- **Settlement / acerto** — cálculo financeiro de compensação entre o casal.
+- **Capsule memory** — memória antiga destacada no aniversário de dia/mês.
+- **App shell** — arquivos estáticos necessários para abrir a interface.
+- **RLS** — Row Level Security do Postgres/Supabase.
+- **RPC** — função Postgres chamada pelo frontend.
+- **Realtime** — sincronização de mudanças do backend com os clientes.
+- **Signed URL** — URL temporária autorizada para leitura de arquivo privado.

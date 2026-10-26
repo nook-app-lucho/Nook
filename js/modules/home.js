@@ -1,5 +1,5 @@
 import { store } from '../store.js';
-import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency, runAction, imageBackground, validateImageFile, initModalController, editWarning, saveFormEdit } from '../utils.js';
+import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, openConfirmSheet, closeAllModals, formatCurrency, runAction, imageBackground, validateImageFile, initModalController, editWarning, saveFormEdit, showToast } from '../utils.js';
 
 import { daysTogether, sameId, validDate, pendingSummary, NOTE_REACTIONS } from '../rules.js';
 
@@ -24,6 +24,28 @@ let memoryPhotoUrl = null;
 let memoryUploadPending = false;
 let memoryEditContext = null;
 let editingMemoryId = null; // Variável para controlar a edição
+let viewingMemoryId = null;
+let noteEditContext = null;
+let editingNoteId = null;
+let noteOriginalDuration = null;
+
+const getNoteDurationValue = note => {
+    if (!note?.expiresAt) return 'permanent';
+    const start = Date.parse(note.date);
+    const end = Date.parse(note.expiresAt);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return '168';
+    const hours = Math.round((end - start) / 3600000);
+    if (hours <= 48) return '24';
+    if (hours <= 120) return '72';
+    return '168';
+};
+
+const expiresAtFromDuration = value => {
+    if (value === 'permanent') return null;
+    const hours = Number(value);
+    if (![24, 72, 168].includes(hours)) throw new Error('Escolha a duração do recado.');
+    return new Date(Date.now() + hours * 3600000).toISOString();
+};
 
 const getFirstName = (fullName, fallback = '') => {
     if (!fullName) return fallback;
@@ -65,7 +87,7 @@ export const renderHome = () => {
     const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
     const partnerPersonId = myPersonId === 'p1' ? 'p2' : 'p1';
     
-    const renderMoodCard = (slot, personId) => {
+    const renderMoodCard = (slot, personId, editable) => {
         const rawName = personId === 'p1' ? store.profile?.p1 : store.profile?.p2;
         const fallbackDefault = personId === 'p1' ? 'Você' : 'Parceiro(a)';
         const firstName = getFirstName(rawName, fallbackDefault);
@@ -78,6 +100,7 @@ export const renderHome = () => {
         const moodData = (store.moods?.date === todayStr && store.moods[personId]) ? MOODS.find(m => m.id === store.moods[personId]) : null;
         const iconEl = document.getElementById(`mood-icon-${slot}`);
         const textEl = document.getElementById(`mood-text-${slot}`);
+        const hintEl = document.getElementById(`mood-hint-${slot}`);
         
         if (moodData) {
             if (iconEl) iconEl.textContent = moodData.icon;
@@ -92,13 +115,16 @@ export const renderHome = () => {
                 textEl.className = 'mood-text';
             }
         }
+        if (hintEl) hintEl.textContent = editable ? 'Toque para alterar' : 'Somente leitura';
     };
     
-    renderMoodCard('p1', myPersonId); 
-    renderMoodCard('p2', partnerPersonId);
+    renderMoodCard('p1', myPersonId, true); 
+    renderMoodCard('p2', partnerPersonId, false);
     
+    const cardP1 = document.getElementById('btn-mood-p1');
     const cardP2 = document.getElementById('btn-mood-p2');
-    if (cardP2) cardP2.classList.add('cursor-default');
+    cardP1?.classList.add('mood-card--editable');
+    cardP2?.classList.add('mood-card--readonly', 'cursor-default');
     
     const tasksDescEl = document.getElementById('home-tasks-desc');
     if (tasksDescEl) {
@@ -143,33 +169,96 @@ export const renderHome = () => {
     renderNotesSection();
 };
 
+const formatMemoryDate = value => {
+    if (!validDate(value)) return 'Data não disponível';
+    const [year, month, day] = value.split('-').map(Number);
+    return new Intl.DateTimeFormat('pt-BR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        timeZone: 'UTC'
+    }).format(new Date(Date.UTC(year, month - 1, day)));
+};
+
+const openMemoryEditor = memory => {
+    if (!memory) return;
+    if (memoryUploadPending) { showToast('Aguarde o envio da foto terminar.', 'ph-info'); return; }
+
+    memoryEditContext = store.captureEdit('memories', memory.id);
+    const opened = memoryEditContext.record;
+    editWarning('memory-edit-warning');
+    editingMemoryId = opened.id;
+    memoryPhotoUrl = null;
+    document.getElementById('file-memory-photo').value = '';
+    document.getElementById('memory-title').value = opened.title || '';
+    document.getElementById('memory-date').value = opened.date || '';
+    document.getElementById('memory-note').value = opened.note || '';
+
+    const preview = document.getElementById('memory-photo-preview');
+    const openedPhotoUrl = store.getPhotoDisplayUrl(opened.photo);
+    if (openedPhotoUrl) {
+        preview.style.backgroundImage = imageBackground(openedPhotoUrl);
+        preview.classList.remove('d-none');
+    } else {
+        preview.style.backgroundImage = 'none';
+        preview.classList.add('d-none');
+    }
+
+    const modalTitle = document.querySelector('#memory-bottom-sheet .sheet-header h2');
+    if (modalTitle) modalTitle.textContent = 'Editar Memória';
+    closeAllModals(true);
+    openModal('memory-bottom-sheet');
+};
+
+const openMemoryViewer = memory => {
+    if (!memory) return;
+    viewingMemoryId = memory.id;
+    const image = document.getElementById('memory-viewer-image');
+    const photoUrl = store.getPhotoDisplayUrl(memory.photo) || PRESET_COVERS[0];
+    if (image) {
+        image.src = photoUrl;
+        image.alt = `Foto da memória: ${memory.title || 'momento do casal'}`;
+    }
+    const date = document.getElementById('memory-viewer-date');
+    const title = document.getElementById('memory-viewer-title');
+    const note = document.getElementById('memory-viewer-note');
+    if (date) date.textContent = formatMemoryDate(memory.date);
+    if (title) title.textContent = memory.title || 'Memória';
+    if (note) {
+        note.textContent = memory.note || 'Sem descrição adicional.';
+        note.classList.toggle('text-muted', !memory.note);
+    }
+    openModal('memory-viewer-bottom-sheet');
+};
+
 const renderMemoriesSection = () => {
     const capsuleContainer = document.getElementById('home-capsule-card');
     const memoriesGrid = document.getElementById('home-memories-grid');
     if (!memoriesGrid) return;
-    
+
     memoriesGrid.innerHTML = '';
     const memories = store.memories || [];
     const today = new Date();
     const todayMonthDay = `${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    const capsuleMemory = memories.find(m => {
-        if (!m.date) return false;
-        const [y, mm, dd] = m.date.split('-');
-        return `${mm}-${dd}` === todayMonthDay && Number(y) < today.getFullYear();
+    const capsuleMemory = memories.find(memory => {
+        if (!memory.date) return false;
+        const [year, month, day] = memory.date.split('-');
+        return `${month}-${day}` === todayMonthDay && Number(year) < today.getFullYear();
     });
-    
+
     if (capsuleContainer) {
         if (capsuleMemory) {
             capsuleContainer.classList.remove('d-none');
-            const [y] = capsuleMemory.date.split('-');
-            const diffAnos = today.getFullYear() - Number(y);
-            document.getElementById('capsule-title').textContent = `Há ${diffAnos} ano${diffAnos > 1 ? 's' : ''} atrás...`;
+            const [year] = capsuleMemory.date.split('-');
+            const yearsAgo = today.getFullYear() - Number(year);
+            document.getElementById('capsule-title').textContent = `Há ${yearsAgo} ano${yearsAgo > 1 ? 's' : ''} atrás...`;
             document.getElementById('capsule-text').textContent = capsuleMemory.title;
-            document.getElementById('capsule-bg').style.backgroundImage = imageBackground(store.getPhotoDisplayUrl(capsuleMemory.photo));        } else {
+            document.getElementById('capsule-bg').style.backgroundImage = imageBackground(store.getPhotoDisplayUrl(capsuleMemory.photo));
+        } else {
             capsuleContainer.classList.add('d-none');
         }
     }
-    
+
     if (memories.length === 0) {
         memoriesGrid.innerHTML = `
             <div class="empty-state-card">
@@ -177,67 +266,36 @@ const renderMemoriesSection = () => {
                 Nenhuma memória registada ainda.<br>Clique em "+ Nova Memória" para guardar um momento!
             </div>
         `;
-    } else {
-        const sortedMemories = [...memories].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
-        sortedMemories.forEach(mem => {
-            const [y, m, d] = validDate(mem.date) ? mem.date.split('-') : ['?', '?', '?'];
-            const card = document.createElement('div');
-            card.className = 'memory-card';
-            
-            // Adicionado botão de editar na grid sobrescrevendo inline positions para não quebrar o CSS
-            card.innerHTML = `
-<div class="memory-photo" style="background-image: ${escapeHTML(imageBackground(store.getPhotoDisplayUrl(mem.photo) || PRESET_COVERS[0]))}">                    <span class="memory-date-badge">${d}/${m}/${y}</span>
-                    <div style="position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; z-index: 10;">
-                        <button class="btn-edit-memory" title="Editar memória" style="position: static; background: rgba(0, 0, 0, 0.5); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer;"><i class="ph ph-pencil-simple"></i></button>
-                        <button class="btn-delete-memory" title="Apagar memória" style="position: static; background: rgba(0, 0, 0, 0.5); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer;"><i class="ph ph-trash"></i></button>
-                    </div>
-                </div>
-                <div class="memory-info">
-                    <strong>${escapeHTML(mem.title)}</strong>
-                    ${mem.note ? `<p>${escapeHTML(mem.note)}</p>` : ''}
-                </div>
-            `;
-            
-            card.querySelector('.btn-edit-memory').addEventListener('click', (e) => {
-                e.stopPropagation();
-                triggerHaptic(10);
-                
-                if (memoryUploadPending) { alert('Aguarde o envio da foto terminar.'); return; }
-                memoryEditContext = store.captureEdit('memories', mem.id);
-                const opened = memoryEditContext.record;
-                editWarning('memory-edit-warning');
-                editingMemoryId = opened.id;
-                memoryPhotoUrl = null;
-                document.getElementById('file-memory-photo').value = ''; 
-                
-                document.getElementById('memory-title').value = opened.title || '';
-                document.getElementById('memory-date').value = opened.date || '';
-                document.getElementById('memory-note').value = opened.note || '';
-                
-                const prev = document.getElementById('memory-photo-preview');
-const openedPhotoUrl = store.getPhotoDisplayUrl(opened.photo);
-if (openedPhotoUrl) {
-    prev.style.backgroundImage = imageBackground(openedPhotoUrl);
-    prev.classList.remove('d-none');
-} else {
-                    prev.style.backgroundImage = 'none';
-                    prev.classList.add('d-none');
-                }
-                
-                const modalTitle = document.querySelector('#memory-bottom-sheet .sheet-header h2');
-                if(modalTitle) modalTitle.textContent = "Editar Memória";
-                
-                openModal('memory-bottom-sheet');
-            });
-
-            card.querySelector('.btn-delete-memory').addEventListener('click', async e => {
-                e.stopPropagation();
-                if (!confirm('Excluir esta memória?')) return;
-                await runAction(card, async () => { await store.deleteRecord('memories', mem.id); triggerHaptic(20); renderMemoriesSection(); });
-            });
-            memoriesGrid.appendChild(card);
-        });
+        return;
     }
+
+    const sortedMemories = [...memories].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    sortedMemories.forEach(memory => {
+        const [year, month, day] = validDate(memory.date) ? memory.date.split('-') : ['?', '?', '?'];
+        const photoUrl = store.getPhotoDisplayUrl(memory.photo) || PRESET_COVERS[0];
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'memory-card memory-card-button';
+        card.setAttribute('aria-label', `Abrir memória: ${memory.title || 'momento do casal'}`);
+        card.innerHTML = `
+            <span class="memory-photo">
+                <img
+                    src="${escapeHTML(photoUrl)}"
+                    alt="${escapeHTML(`Foto da memória: ${memory.title || 'momento do casal'}`)}"
+                    loading="lazy"
+                    decoding="async"
+                    class="memory-card-image"
+                >
+                <span class="memory-date-badge">${day}/${month}/${year}</span>
+            </span>
+            <span class="memory-info">
+                <strong>${escapeHTML(memory.title)}</strong>
+                ${memory.note ? `<span class="memory-info-note">${escapeHTML(memory.note)}</span>` : ''}
+            </span>
+        `;
+        card.addEventListener('click', () => openMemoryViewer(memory));
+        memoriesGrid.appendChild(card);
+    });
 };
 
 const renderNotesSection = () => {
@@ -247,6 +305,7 @@ const renderNotesSection = () => {
     grid.innerHTML = '';
     const now = new Date();
     const validNotes = (store.notes || []).filter(n => !n.expiresAt || new Date(n.expiresAt) > now);
+    const myAuthorName = store.getAuthorName();
     
     if (validNotes.length === 0) {
         grid.innerHTML = `
@@ -261,9 +320,9 @@ const renderNotesSection = () => {
     const sortedNotes = [...validNotes].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     sortedNotes.forEach((note, index) => {
         const card = document.createElement('div');
-        const rotation = index % 2 === 0 ? 'rotate(2deg)' : 'rotate(-2deg)';
-        card.className = `note-card ${['yellow', 'pink', 'blue'].includes(note.color) ? note.color : 'yellow'}`;
-        card.style.transform = rotation;
+        const tiltClass = index % 2 === 0 ? 'note-card--tilt-right' : 'note-card--tilt-left';
+        const canEdit = note.owner === myAuthorName;
+        card.className = `note-card ${tiltClass} ${['yellow', 'pink', 'blue'].includes(note.color) ? note.color : 'yellow'}`;
         
         const reactionsDisplay = escapeHTML((note.reactions || []).join(''));
         
@@ -276,8 +335,11 @@ const renderNotesSection = () => {
             <div class="note-actions">
                 ${NOTE_REACTIONS.map(emoji => `<button type="button" class="btn-reaction" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}
             </div>
-            
-            <button class="btn-delete-note" title="Apagar recado"><i class="ph ph-trash"></i></button>
+
+            <div class="note-card-controls">
+                ${canEdit ? '<button type="button" class="btn-note-control btn-edit-note" title="Editar recado"><i class="ph ph-pencil-simple"></i></button>' : ''}
+                <button type="button" class="btn-note-control btn-delete-note" title="Apagar recado"><i class="ph ph-trash"></i></button>
+            </div>
         `;
         
         card.querySelectorAll('.btn-reaction').forEach(btn => {
@@ -288,21 +350,52 @@ const renderNotesSection = () => {
                     if (!latest) throw new Error('Este recado não está disponível.');
                     const currentReactions = (latest.reactions || []).filter(reaction => NOTE_REACTIONS.includes(reaction));
                     await store.saveRecord('notes', { ...latest, reactions: [...currentReactions, emoji] });
-                    triggerHaptic(10); renderNotesSection();
+                    renderNotesSection();
                 });
             });
         });
-        card.querySelector('.btn-delete-note').addEventListener('click', async () => {
-            if (!confirm('Excluir este recado?')) return;
-            await runAction(card, async () => { await store.deleteRecord('notes', note.id); renderNotesSection(); });
+
+        card.querySelector('.btn-edit-note')?.addEventListener('click', () => {
+            const latest = store.notes.find(item => sameId(item.id, note.id));
+            if (!latest || latest.owner !== store.getAuthorName()) {
+                showToast('Você só pode editar os seus próprios recados.', 'ph-info');
+                return;
+            }
+            noteEditContext = store.captureEdit('notes', latest.id);
+            editingNoteId = latest.id;
+            noteOriginalDuration = getNoteDurationValue(noteEditContext.record);
+            editWarning('note-edit-warning');
+
+            document.getElementById('note-text').value = noteEditContext.record.text;
+            document.getElementById('note-duration').value = noteOriginalDuration;
+            document.getElementById('note-color').value = noteEditContext.record.color || 'yellow';
+            document.getElementById('note-color-group')?.classList.add('d-none');
+            const title = document.getElementById('note-modal-title');
+            const submit = document.getElementById('btn-submit-note');
+            if (title) title.textContent = 'Editar recado';
+            if (submit) submit.textContent = 'Salvar alterações';
+            openModal('note-bottom-sheet');
+        });
+
+        card.querySelector('.btn-delete-note').addEventListener('click', () => {
+            openConfirmSheet({
+                title: 'Excluir recado?',
+                message: `“${note.text}” será removido do mural. Esta ação não poderá ser desfeita.`,
+                confirmLabel: 'Excluir recado',
+                onConfirm: async () => {
+                    await store.deleteRecord('notes', note.id);
+                    renderNotesSection();
+                    showToast('Recado excluído.');
+                }
+            });
         });
         grid.appendChild(card);
     });
 };
 
 export const initHome = () => {
-    document.getElementById('home-tasks-card')?.addEventListener('click', () => { triggerHaptic(10); document.querySelector('.nav-item[data-target="view-lists"]')?.click(); });
-    document.getElementById('home-fin-card')?.addEventListener('click', () => { triggerHaptic(10); document.querySelector('.nav-item[data-target="view-finances"]')?.click(); });
+    document.getElementById('home-tasks-card')?.addEventListener('click', () => { document.querySelector('.nav-item[data-target="view-lists"]')?.click(); });
+    document.getElementById('home-fin-card')?.addEventListener('click', () => { document.querySelector('.nav-item[data-target="view-finances"]')?.click(); });
     
     initModalController();
     
@@ -341,10 +434,9 @@ await store.setProfile({ heroCover: path });
     });
     
     document.getElementById('btn-mood-p2')?.addEventListener('click', () => {
-        triggerHaptic(10);
         const myPersonId = typeof store.getLoggedUser === 'function' ? store.getLoggedUser() : 'p1';
         const partnerName = myPersonId === 'p1' ? (store.profile?.p2 || 'Seu parceiro') : (store.profile?.p1 || 'Seu parceiro');
-        alert(`Apenas ${partnerName} pode atualizar o próprio humor!`);
+        showToast(`Esse mood só pode ser atualizado por ${partnerName}.`, 'ph-info');
     });
     
     if (optionsContainer) {
@@ -360,8 +452,31 @@ await store.setProfile({ heroCover: path });
         });
     }
     
+    document.getElementById('btn-viewer-edit-memory')?.addEventListener('click', () => {
+        const memory = store.memories.find(item => sameId(item.id, viewingMemoryId));
+        if (!memory) { showToast('Esta memória não está mais disponível.', 'ph-warning-circle'); return; }
+        openMemoryEditor(memory);
+    });
+
+    document.getElementById('btn-viewer-delete-memory')?.addEventListener('click', () => {
+        const memory = store.memories.find(item => sameId(item.id, viewingMemoryId));
+        if (!memory) { showToast('Esta memória não está mais disponível.', 'ph-warning-circle'); return; }
+        openConfirmSheet({
+            title: 'Excluir memória?',
+            message: `“${memory.title || 'Esta memória'}” será removida. Esta ação não poderá ser desfeita.`,
+            confirmLabel: 'Excluir memória',
+            onConfirm: async () => {
+                await store.deleteRecord('memories', memory.id);
+                viewingMemoryId = null;
+                triggerHaptic(20);
+                renderMemoriesSection();
+                showToast('Memória excluída.');
+            }
+        });
+    });
+
     document.getElementById('btn-open-memory-modal')?.addEventListener('click', () => {
-        if (memoryUploadPending) { alert('Aguarde o envio da foto terminar.'); return; }
+        if (memoryUploadPending) { showToast('Aguarde o envio da foto terminar.', 'ph-info'); return; }
         memoryEditContext = null; editWarning('memory-edit-warning');
         editingMemoryId = null; // Garante modo de criação novo
         document.getElementById('form-add-memory')?.reset();
@@ -402,19 +517,62 @@ triggerHaptic(20);
             if (editingMemoryId != null && !existing) throw new Error('Esta memória mudou. Recarregue.');
             const data = { ...(existing || {}), title: document.getElementById('memory-title').value.trim(), date: document.getElementById('memory-date').value, note: document.getElementById('memory-note').value.trim(), photo: memoryPhotoUrl || existing?.photo || null };
             const saved = editingMemoryId != null ? await saveFormEdit(memoryEditContext, data, 'memory-edit-warning') : await store.saveRecord('memories', data, { create: true });
+            const wasEditing = editingMemoryId != null;
             editingMemoryId = saved.id; memoryPhotoUrl = null;
             triggerHaptic(30); renderHome(); closeAllModals(true);
+            showToast(wasEditing ? 'Memória atualizada ✓' : 'Memória salva ✓');
         });
     });
 
-    document.getElementById('btn-open-note-modal')?.addEventListener('click', () => { document.getElementById('form-add-note')?.reset(); openModal('note-bottom-sheet'); });
+    document.getElementById('btn-open-note-modal')?.addEventListener('click', () => {
+        const form = document.getElementById('form-add-note');
+        form?.reset();
+        noteEditContext = null;
+        editingNoteId = null;
+        noteOriginalDuration = null;
+        editWarning('note-edit-warning');
+        document.getElementById('note-color-group')?.classList.remove('d-none');
+        const title = document.getElementById('note-modal-title');
+        const submit = document.getElementById('btn-submit-note');
+        if (title) title.textContent = 'Deixar um Recado';
+        if (submit) submit.textContent = 'Fixar no Mural';
+        const duration = document.getElementById('note-duration');
+        if (duration) duration.value = '168';
+        openModal('note-bottom-sheet');
+    });
     document.getElementById('form-add-note')?.addEventListener('submit', async e => {
         e.preventDefault(); const form = e.currentTarget;
         await runAction(form, async () => {
-            const hours = Number(document.getElementById('note-duration').value || 168);
-            if (![24, 72, 168].includes(hours)) throw new Error('Escolha a duração do recado.');
-            await store.saveRecord('notes', { text: document.getElementById('note-text').value.trim(), color: document.getElementById('note-color').value, owner: store.getAuthorName(), date: new Date().toISOString(), expiresAt: new Date(Date.now() + hours * 3600000).toISOString(), reactions: [] }, { create: true });
-            triggerHaptic(30); renderHome(); closeAllModals(true); form.reset();
+            const durationValue = document.getElementById('note-duration').value;
+            if (!['24', '72', '168', 'permanent'].includes(durationValue)) throw new Error('Escolha a duração do recado.');
+            const text = document.getElementById('note-text').value.trim();
+
+            if (editingNoteId != null) {
+                const existing = noteEditContext?.record;
+                if (!existing || !sameId(existing.id, editingNoteId)) throw new Error('Este recado mudou. Reabra a edição.');
+                if (existing.owner !== store.getAuthorName()) throw new Error('Você só pode editar os seus próprios recados.');
+                const expiresAt = durationValue === noteOriginalDuration ? existing.expiresAt : expiresAtFromDuration(durationValue);
+                await saveFormEdit(noteEditContext, { text, expiresAt }, 'note-edit-warning');
+                showToast('Recado atualizado ✓');
+            } else {
+                await store.saveRecord('notes', {
+                    text,
+                    color: document.getElementById('note-color').value,
+                    owner: store.getAuthorName(),
+                    date: new Date().toISOString(),
+                    expiresAt: expiresAtFromDuration(durationValue),
+                    reactions: []
+                }, { create: true });
+                showToast('Recado criado ✓');
+            }
+
+            noteEditContext = null;
+            editingNoteId = null;
+            noteOriginalDuration = null;
+            triggerHaptic(30);
+            renderHome();
+            closeAllModals(true);
+            form.reset();
         });
     });
 

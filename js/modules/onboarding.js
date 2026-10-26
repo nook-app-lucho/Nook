@@ -91,7 +91,6 @@ const initEmojiPicker = () => {
             btn.className = 'emoji-btn';
             btn.textContent = emoji;
             btn.addEventListener('click', () => {
-                triggerHaptic(20);
                 const inputName = document.getElementById(`onboarding-${currentTargetPerson}`);
                 const preview = document.getElementById(`preview-${currentTargetPerson}`);
                 const previousTemp = currentTargetPerson === 'p1' ? tempAvatarP1 : tempAvatarP2;
@@ -114,7 +113,6 @@ const initEmojiPicker = () => {
 
 export const openEmojiPicker = (personId) => {
     currentTargetPerson = personId;
-    triggerHaptic(10);
     openModal('emoji-picker-sheet');
 };
 
@@ -145,7 +143,6 @@ const setupAvatarPicker = (personId) => {
                 if (personId === 'p1') tempAvatarP1 = path; else tempAvatarP2 = path;
                 renderAvatar([preview], inputName?.value || '', path);
                 if (previousTemp && previousTemp !== persisted) store.deletePhoto(previousTemp).catch(() => {});
-                triggerHaptic(20);
             } finally { uploadsPending--; }
         });
     });
@@ -192,8 +189,7 @@ export const initOnboarding = () => {
     if (btnReopen) {
         btnReopen.addEventListener('click', () => {
             if (store.profile?.approved !== true) return;
-            triggerHaptic(10);
-            if (store.profile) {
+                    if (store.profile) {
                 document.getElementById('onboarding-p1').value = store.profile.p1;
                 document.getElementById('onboarding-p2').value = store.profile.p2;
                 document.getElementById('onboarding-date').value = store.profile.startDate;
