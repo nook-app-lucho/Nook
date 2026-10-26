@@ -1,7 +1,7 @@
-import { store, supabase } from '../store.js';
-import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency, runAction, safeImageUrl, imageBackground, validateImageFile, initModalController, editWarning, saveFormEdit } from '../utils.js';
+import { store } from '../store.js';
+import { getLocalDateString, escapeHTML, triggerHaptic, getAvatarHtml, openModal, closeAllModals, formatCurrency, runAction, imageBackground, validateImageFile, initModalController, editWarning, saveFormEdit } from '../utils.js';
 
-import { daysTogether, sameId, validDate, pendingSummary } from '../rules.js';
+import { daysTogether, sameId, validDate, pendingSummary, NOTE_REACTIONS } from '../rules.js';
 
 const MOODS = [
     { id: 'energia', icon: '⚡', label: 'Cheio(a) de energia' },
@@ -35,7 +35,7 @@ export const renderHome = () => {
     const heroEl = document.getElementById('main-hero');
     if (heroEl && store.profile) {
         const cover = store.profile.heroCover || PRESET_COVERS[0];
-        heroEl.style.backgroundImage = imageBackground(cover);
+        heroEl.style.backgroundImage = imageBackground(store.getPhotoDisplayUrl(cover) || PRESET_COVERS[0]);
     }
     
     const greetingElement = document.getElementById('dynamic-greeting');
@@ -165,8 +165,7 @@ const renderMemoriesSection = () => {
             const diffAnos = today.getFullYear() - Number(y);
             document.getElementById('capsule-title').textContent = `Há ${diffAnos} ano${diffAnos > 1 ? 's' : ''} atrás...`;
             document.getElementById('capsule-text').textContent = capsuleMemory.title;
-            document.getElementById('capsule-bg').style.backgroundImage = imageBackground(capsuleMemory.photo);
-        } else {
+            document.getElementById('capsule-bg').style.backgroundImage = imageBackground(store.getPhotoDisplayUrl(capsuleMemory.photo));        } else {
             capsuleContainer.classList.add('d-none');
         }
     }
@@ -187,8 +186,7 @@ const renderMemoriesSection = () => {
             
             // Adicionado botão de editar na grid sobrescrevendo inline positions para não quebrar o CSS
             card.innerHTML = `
-                <div class="memory-photo" style="background-image: ${escapeHTML(imageBackground(mem.photo || PRESET_COVERS[0]))}">
-                    <span class="memory-date-badge">${d}/${m}/${y}</span>
+<div class="memory-photo" style="background-image: ${escapeHTML(imageBackground(store.getPhotoDisplayUrl(mem.photo) || PRESET_COVERS[0]))}">                    <span class="memory-date-badge">${d}/${m}/${y}</span>
                     <div style="position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; z-index: 10;">
                         <button class="btn-edit-memory" title="Editar memória" style="position: static; background: rgba(0, 0, 0, 0.5); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer;"><i class="ph ph-pencil-simple"></i></button>
                         <button class="btn-delete-memory" title="Apagar memória" style="position: static; background: rgba(0, 0, 0, 0.5); color: white; border: none; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; cursor: pointer;"><i class="ph ph-trash"></i></button>
@@ -217,10 +215,11 @@ const renderMemoriesSection = () => {
                 document.getElementById('memory-note').value = opened.note || '';
                 
                 const prev = document.getElementById('memory-photo-preview');
-                if (opened.photo) {
-                    prev.style.backgroundImage = imageBackground(opened.photo);
-                    prev.classList.remove('d-none');
-                } else {
+const openedPhotoUrl = store.getPhotoDisplayUrl(opened.photo);
+if (openedPhotoUrl) {
+    prev.style.backgroundImage = imageBackground(openedPhotoUrl);
+    prev.classList.remove('d-none');
+} else {
                     prev.style.backgroundImage = 'none';
                     prev.classList.add('d-none');
                 }
@@ -275,9 +274,7 @@ const renderNotesSection = () => {
             <span class="note-author">- ${escapeHTML(note.owner)}</span>
             
             <div class="note-actions">
-                <button type="button" class="btn-reaction" data-emoji="❤️">❤️</button>
-                <button type="button" class="btn-reaction" data-emoji="😘">😘</button>
-                <button type="button" class="btn-reaction" data-emoji="☕">☕</button>
+                ${NOTE_REACTIONS.map(emoji => `<button type="button" class="btn-reaction" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}
             </div>
             
             <button class="btn-delete-note" title="Apagar recado"><i class="ph ph-trash"></i></button>
@@ -289,7 +286,8 @@ const renderNotesSection = () => {
                 await runAction(card, async () => {
                     const latest = store.notes.find(item => sameId(item.id, note.id));
                     if (!latest) throw new Error('Este recado não está disponível.');
-                    await store.saveRecord('notes', { ...latest, reactions: [...(latest.reactions || []), emoji] });
+                    const currentReactions = (latest.reactions || []).filter(reaction => NOTE_REACTIONS.includes(reaction));
+                    await store.saveRecord('notes', { ...latest, reactions: [...currentReactions, emoji] });
                     triggerHaptic(10); renderNotesSection();
                 });
             });
@@ -301,8 +299,6 @@ const renderNotesSection = () => {
         grid.appendChild(card);
     });
 };
-
-const imageExtension = file => ({ 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[file.type]);
 
 export const initHome = () => {
     document.getElementById('home-tasks-card')?.addEventListener('click', () => { triggerHaptic(10); document.querySelector('.nav-item[data-target="view-lists"]')?.click(); });
@@ -332,11 +328,8 @@ export const initHome = () => {
         if (!file) return;
         await runAction(document.getElementById('hero-bottom-sheet'), async () => {
             validateImageFile(file);
-            const fileName = `covers/${crypto.randomUUID()}.${imageExtension(file)}`;
-            const { error } = await supabase.storage.from('photos').upload(fileName, file);
-            if (error) throw error;
-            const { data } = supabase.storage.from('photos').getPublicUrl(fileName);
-            await store.setProfile({ heroCover: data.publicUrl });
+const path = await store.uploadPhoto('covers', file, { prefix: 'cover' });
+await store.setProfile({ heroCover: path });
             triggerHaptic(30); renderHome(); closeAllModals(true);
         });
     });
@@ -392,13 +385,11 @@ export const initHome = () => {
         await runAction(document.getElementById('form-add-memory'), async () => {
             validateImageFile(file); memoryUploadPending = true;
             try {
-                const fileName = `memories/${crypto.randomUUID()}.${imageExtension(file)}`;
-                const { error } = await supabase.storage.from('photos').upload(fileName, file);
-                if (error) throw error;
-                const { data } = supabase.storage.from('photos').getPublicUrl(fileName);
-                memoryPhotoUrl = data.publicUrl;
-                const preview = document.getElementById('memory-photo-preview');
-                preview.style.backgroundImage = imageBackground(memoryPhotoUrl); preview.classList.remove('d-none'); triggerHaptic(20);
+memoryPhotoUrl = await store.uploadPhoto('memories', file, { prefix: 'memory' });
+const preview = document.getElementById('memory-photo-preview');
+preview.style.backgroundImage = imageBackground(store.getPhotoDisplayUrl(memoryPhotoUrl));
+preview.classList.remove('d-none');
+triggerHaptic(20);
             } finally { memoryUploadPending = false; }
         });
     });

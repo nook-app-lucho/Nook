@@ -7,6 +7,8 @@ let editingItemId = null;
 let activeListId = null;
 let draggedItemIndex = null;
 let activeFilter = 'all';
+let clearCompletedListId = null;
+let clearCompletedCount = 0;
 
 const togglePriority = (current) => {
     if (!current || current === 'none') return 'urgent';
@@ -395,14 +397,43 @@ export const initLists = () => {
             document.getElementById('input-task-text').value = ''; renderLists();
         });
     });
-    document.getElementById('btn-list-archive')?.addEventListener('click', async e => {
-        const list = store.lists.find(item => sameId(item.id, activeListId));
-        if (!list) return;
-        const completed = list.items.filter(item => item.completed);
-        if (!completed.length) { showToast('Nenhum item concluído.'); return; }
-        if (!confirm(`Remover ${completed.length} item(ns) concluído(s)? Esta ação cria um arquivo recuperável.`)) return;
-        await runAction(e.currentTarget, async () => { await store.saveRecord('lists', { ...list, items: list.items.filter(item => !item.completed) }); renderLists(); showToast('Itens concluídos removidos.'); });
+    document.getElementById('btn-list-archive')?.addEventListener('click', () => {
+    const list = store.lists.find(item => sameId(item.id, activeListId));
+    if (!list) return;
+    const completed = list.items.filter(item => item.completed);
+    if (!completed.length) { showToast('Nenhum item concluído.'); return; }
+
+    clearCompletedListId = list.id;
+    clearCompletedCount = completed.length;
+    const message = document.getElementById('clear-completed-message');
+    if (message) message.textContent = `Excluir ${clearCompletedCount} ${clearCompletedCount === 1 ? 'item concluído' : 'itens concluídos'}? Esta ação não poderá ser desfeita.`;
+    openModal('clear-completed-bottom-sheet');
+});
+
+document.getElementById('btn-confirm-clear-completed')?.addEventListener('click', async e => {
+    const list = store.lists.find(item => sameId(item.id, clearCompletedListId));
+    if (!list) { closeAllModals(true); showToast('Esta lista não está mais disponível.'); return; }
+
+    const completed = list.items.filter(item => item.completed);
+    if (!completed.length) { closeAllModals(true); showToast('Nenhum item concluído.'); return; }
+
+    if (completed.length !== clearCompletedCount) {
+        clearCompletedCount = completed.length;
+        const message = document.getElementById('clear-completed-message');
+        if (message) message.textContent = `Excluir ${clearCompletedCount} ${clearCompletedCount === 1 ? 'item concluído' : 'itens concluídos'}? Esta ação não poderá ser desfeita.`;
+        showToast('A lista mudou. Confira a nova quantidade antes de confirmar.');
+        return;
+    }
+
+    await runAction(e.currentTarget, async () => {
+        await store.saveRecord('lists', { ...list, items: list.items.filter(item => !item.completed) });
+        clearCompletedListId = null;
+        clearCompletedCount = 0;
+        renderLists();
+        closeAllModals(true);
+        showToast('Itens concluídos excluídos.');
     });
+});
     
     if (store.lists.length > 0) activeListId = store.lists[0].id;
     renderLists();

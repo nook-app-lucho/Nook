@@ -3,10 +3,28 @@ const SUPABASE_KEY = 'sb_publishable_UaYVZI-rhN-Bi2pdwjiqJA_oO2RzbbL';
 
 export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-import { localDate, sameId, nonEmpty, numberValue, validDate, validateExpense, validateGoal, normalizeListItems, normalizeGoalHistory } from './rules.js';
+import { localDate, sameId, nonEmpty, numberValue, validDate, validateExpense, validateGoal, normalizeListItems, normalizeGoalHistory, NOTE_REACTIONS } from './rules.js';
 
 const copy = value => JSON.parse(JSON.stringify(value));
 const tableKeys = ['expenses', 'lists', 'agenda', 'goals', 'memories', 'notes'];
+const PHOTO_BUCKET = 'photos';
+const PHOTO_FOLDERS = new Set(['avatars', 'covers', 'memories']);
+const PHOTO_URL_TTL_SECONDS = 6 * 60 * 60;
+const PHOTO_URL_CACHE_MS = (PHOTO_URL_TTL_SECONDS * 1000) - (5 * 60 * 1000);
+const PHOTO_MIME_EXTENSIONS = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'image/gif': 'gif'
+};
+const isLegacyPhotoValue = value => typeof value === 'string' && /^(https?:\/\/|data:image\/)/i.test(value.trim());
+const photoPathParts = value => {
+    if (typeof value !== 'string') return null;
+    const path = value.trim();
+    const parts = path.split('/');
+    if (parts.length < 3 || !parts[0] || !PHOTO_FOLDERS.has(parts[1]) || parts.slice(2).some(part => !part || part === '.' || part === '..')) return null;
+    return { path, coupleId: parts[0], folder: parts[1] };
+};
 
 const emptyFinances = () => ({ model: '50/50', incomeIS: 0, incomeVO: 0, settleMode: 'transfer', configured: false });
 
@@ -71,7 +89,7 @@ const validate = (table, input) => {
     if (table === 'memories') { item.title = nonEmpty(item.title, 'Título'); if (!validDate(item.date)) throw new Error('Data da memória inválida.'); }
     if (table === 'notes') {
         item.text = nonEmpty(item.text, 'Recado'); if (!Array.isArray(item.reactions)) item.reactions = [];
-        if (!item.reactions.every(emoji => ['🔥', '❤️', '😂'].includes(emoji))) throw new Error('Reação inválida.');
+        if (!item.reactions.every(emoji => NOTE_REACTIONS.includes(emoji))) throw new Error('Reação inválida.');
         if (!Number.isFinite(Date.parse(item.date)) || (item.expiresAt && !Number.isFinite(Date.parse(item.expiresAt)))) throw new Error('Data do recado inválida.');
     }
     return item;
@@ -80,11 +98,11 @@ const validate = (table, input) => {
 export const store = {
     profile: null, currentCoupleId: null, currentUserEmail: null,
     theme: readTheme(), finances: emptyFinances(), expenses: [], lists: [], agenda: [], goals: [], memories: [], notes: [],
-    moods: { p1: null, p2: null, date: '' }, _realtimeSubscription: null, _queues: new Map(), _generation: 0, _revisions: {},
+    moods: { p1: null, p2: null, date: '' }, _realtimeSubscription: null, _queues: new Map(), _generation: 0, _revisions: {}, _photoUrlCache: new Map(),
 
     resetData() {
         for (const key of tableKeys) this[key] = [];
-        this._revisions = {}; this.finances = emptyFinances(); this.moods = { p1: null, p2: null, date: '' };
+        this._revisions = {}; this.finances = emptyFinances(); this.moods = { p1: null, p2: null, date: '' }; this._photoUrlCache.clear();
         
         // Limpa estado da sessão completamente
         this.profile = null; 
@@ -108,10 +126,98 @@ export const store = {
         return this.currentCoupleId;
     },
 
+    getPhotoDisplayUrl(value) {
+        if (!value || typeof value !== 'string') return '';
+        const photo = value.trim();
+        if (isLegacyPhotoValue(photo)) return photo;
+
+        const cached = this._photoUrlCache.get(photo);
+        if (!cached) return '';
+        if (cached.expiresAt <= Date.now()) {
+            this._photoUrlCache.delete(photo);
+            return '';
+        }
+        return cached.url;
+    },
+
+    async resolvePhotoUrl(value) {
+        if (!value || typeof value !== 'string') return '';
+        const photo = value.trim();
+        if (!photo) return '';
+        if (isLegacyPhotoValue(photo)) return photo;
+
+        const parsed = photoPathParts(photo);
+        if (!parsed) return '';
+
+        const couple = this.requireCouple();
+        if (!sameId(parsed.coupleId, couple)) throw new Error('Esta foto não pertence ao Nook atual.');
+
+        const cached = this.getPhotoDisplayUrl(photo);
+        if (cached) return cached;
+
+        const generation = this._generation;
+        const data = unwrap(await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(photo, PHOTO_URL_TTL_SECONDS));
+        if (generation !== this._generation || !sameId(couple, this.currentCoupleId)) throw new Error('Sessão alterada. A foto não foi carregada.');
+
+        const signedUrl = data?.signedUrl;
+        if (!signedUrl) throw new Error('O Storage não retornou uma URL temporária para a foto.');
+
+        this._photoUrlCache.set(photo, { url: signedUrl, expiresAt: Date.now() + PHOTO_URL_CACHE_MS });
+        return signedUrl;
+    },
+
+    async _primePhotoUrls(values) {
+        const paths = [...new Set((values || [])
+            .filter(value => typeof value === 'string' && value.trim() && !isLegacyPhotoValue(value))
+            .map(value => value.trim())
+            .filter(value => photoPathParts(value)))];
+
+        if (!paths.length) return;
+        const results = await Promise.allSettled(paths.map(path => this.resolvePhotoUrl(path)));
+        results.forEach((result, index) => {
+            if (result.status === 'rejected') console.warn(`Não foi possível resolver a foto privada ${paths[index]}:`, result.reason);
+        });
+    },
+
+    async uploadPhoto(folder, file, { prefix = 'photo' } = {}) {
+        const couple = this.requireCouple();
+        if (!PHOTO_FOLDERS.has(folder)) throw new Error('Destino de foto inválido.');
+
+        const extension = PHOTO_MIME_EXTENSIONS[file?.type];
+        if (!extension) throw new Error('Escolha uma imagem JPG, PNG, WebP ou GIF.');
+        if (!Number.isFinite(file?.size) || file.size <= 0 || file.size > 8 * 1024 * 1024) throw new Error('A foto deve ter no máximo 8 MB.');
+
+        const safePrefix = String(prefix || 'photo').toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'photo';
+        const path = `${couple}/${folder}/${safePrefix}-${crypto.randomUUID()}.${extension}`;
+        const generation = this._generation;
+
+        unwrap(await supabase.storage.from(PHOTO_BUCKET).upload(path, file, { cacheControl: '3600', upsert: false }));
+
+        if (generation !== this._generation || !sameId(couple, this.currentCoupleId)) {
+            try { await supabase.storage.from(PHOTO_BUCKET).remove([path]); } catch { /* limpeza best effort */ }
+            throw new Error('Sessão alterada. Upload cancelado por segurança.');
+        }
+
+        await this.resolvePhotoUrl(path);
+        return path;
+    },
+
+    async deletePhoto(value) {
+        if (!value || typeof value !== 'string' || isLegacyPhotoValue(value)) return false;
+        const parsed = photoPathParts(value);
+        if (!parsed) return false;
+
+        const couple = this.requireCouple();
+        if (!sameId(parsed.coupleId, couple)) throw new Error('Esta foto não pertence ao Nook atual.');
+
+        unwrap(await supabase.storage.from(PHOTO_BUCKET).remove([parsed.path]));
+        this._photoUrlCache.delete(parsed.path);
+        return true;
+    },
+
     notify() { window.dispatchEvent(new CustomEvent('nook:data-updated')); },
 
     async init() {
-        await this.fetchProfile();
         if (!this.currentCoupleId || this.profile?.approved !== true) return;
         await Promise.all([this.fetchFinances(), ...tableKeys.map(key => this.fetchRecords(key)), this.fetchMoods()]);
         this.subscribeRealtime();
@@ -151,27 +257,36 @@ export const store = {
     },
 
     async fetchProfile() {
-        if (!this.currentUserEmail) return;
-        const generation = this._generation;
+    if (!this.currentUserEmail) return;
+    const generation = this._generation;
+    const authenticatedEmail = this.currentUserEmail;
 
-        // ELIMINA A SEGUNDA CONSULTA: Traz o perfil em uma única query combinada com .or()
-        const data = unwrap(await supabase.from('profiles')
-            .select('*')
-            .or(`p1_email.eq.${this.currentUserEmail},p2_email.eq.${this.currentUserEmail}`)
-            .maybeSingle());
+    const data = unwrap(await supabase.from('profiles')
+        .select('*')
+        .or(`p1_email.eq.${authenticatedEmail},p2_email.eq.${authenticatedEmail}`)
+        .maybeSingle());
 
-        // PREVENÇÃO DE CONFLITO: Descarta resposta atrasada se a conta ou estado global mudou
-        if (generation !== this._generation) return;
+    // Descarta resposta atrasada se logout/troca de sessão aconteceu durante a consulta.
+    if (generation !== this._generation || authenticatedEmail !== this.currentUserEmail) return;
 
-        if (!sameId(data?.couple_id, this.currentCoupleId)) this.resetData();
-        
-        this.currentCoupleId = data?.couple_id ?? null;
-        this.profile = data ? { 
-            p1: data.p1_name, p2: data.p2_name, p1Email: data.p1_email, p2Email: data.p2_email, 
-            startDate: data.start_date, avatarP1: data.avatar_p1, avatarP2: data.avatar_p2, 
-            heroCover: data.hero_cover, inviteCode: data.invite_code, approved: data.approved 
-        } : null;
-    },
+    const nextCoupleId = data?.couple_id ?? null;
+    if (this.currentCoupleId != null && !sameId(nextCoupleId, this.currentCoupleId)) {
+        this.resetData();
+        // A sessão continua autenticada; só os dados do casal anterior devem ser descartados.
+        this.currentUserEmail = authenticatedEmail;
+    }
+
+    this.currentCoupleId = nextCoupleId;
+    this.profile = data ? {
+        p1: data.p1_name, p2: data.p2_name, p1Email: data.p1_email, p2Email: data.p2_email,
+        startDate: data.start_date, avatarP1: data.avatar_p1, avatarP2: data.avatar_p2,
+        heroCover: data.hero_cover, inviteCode: data.invite_code, approved: data.approved
+    } : null;
+
+    if (this.profile?.approved === true) {
+        await this._primePhotoUrls([this.profile.avatarP1, this.profile.avatarP2, this.profile.heroCover]);
+    }
+},
 
     async createNewNook() {
         if (!this.currentUserEmail) throw new Error('Entre na sua conta.');
@@ -207,28 +322,42 @@ export const store = {
     getAuthorName() { const user = this.getLoggedUser(); if (!user) throw new Error('Usuário não vinculado ao espaço.'); return this.profile[user] || user.toUpperCase(); },
 
     async setProfile(patch) {
-        this.requireCouple();
-        const merged = { ...this.profile, ...patch };
-        merged.p1 = nonEmpty(merged.p1, 'Nome da primeira pessoa'); merged.p2 = nonEmpty(merged.p2, 'Nome da segunda pessoa');
-        if (!validDate(merged.startDate) || merged.startDate > localDate()) throw new Error('A data inicial deve ser válida e não pode estar no futuro.');
-        const row = {};
-        const mapping = { p1: 'p1_name', p2: 'p2_name', startDate: 'start_date', avatarP1: 'avatar_p1', avatarP2: 'avatar_p2', heroCover: 'hero_cover' };
-        for (const key of Object.keys(patch)) if (mapping[key]) row[mapping[key]] = merged[key];
-        unwrap(await supabase.from('profiles').update(row).eq('couple_id', this.currentCoupleId).select('couple_id').single());
-        this.profile = merged; this.notify();
-    },
+    this.requireCouple();
+    const previous = this.profile;
+    const merged = { ...previous, ...patch };
+    merged.p1 = nonEmpty(merged.p1, 'Nome da primeira pessoa'); merged.p2 = nonEmpty(merged.p2, 'Nome da segunda pessoa');
+    if (!validDate(merged.startDate) || merged.startDate > localDate()) throw new Error('A data inicial deve ser válida e não pode estar no futuro.');
+    const row = {};
+    const mapping = { p1: 'p1_name', p2: 'p2_name', startDate: 'start_date', avatarP1: 'avatar_p1', avatarP2: 'avatar_p2', heroCover: 'hero_cover' };
+    for (const key of Object.keys(patch)) if (mapping[key]) row[mapping[key]] = merged[key];
+    unwrap(await supabase.from('profiles').update(row).eq('couple_id', this.currentCoupleId).select('couple_id').single());
 
-    async fetchRecords(table) {
-        if (!tableKeys.includes(table)) throw new Error('Tabela inválida.');
-        const couple = this.requireCouple(), generation = this._generation, revision = this._revisions[table] || 0;
-        const data = unwrap(await supabase.from(table).select('*').eq('couple_id', couple));
-        
-        // BLOQUEIO DE ESTADO OBSOLETO: Garante que queries em contas erradas não poluam a UI
-        if (generation === this._generation && revision === (this._revisions[table] || 0) && sameId(couple, this.currentCoupleId)) {
-            this[table] = (data || []).map(row => fromRow(table, row));
-        }
-        return this[table];
-    },
+    this.profile = merged;
+    await this._primePhotoUrls([merged.avatarP1, merged.avatarP2, merged.heroCover]);
+
+    for (const key of ['avatarP1', 'avatarP2', 'heroCover']) {
+        if (!(key in patch) || !previous?.[key] || previous[key] === merged[key]) continue;
+        try { await this.deletePhoto(previous[key]); }
+        catch (error) { console.warn(`Não foi possível remover a foto antiga de ${key}:`, error); }
+    }
+
+    this.notify();
+},
+
+async fetchRecords(table) {
+    if (!tableKeys.includes(table)) throw new Error('Tabela inválida.');
+    const couple = this.requireCouple(), generation = this._generation, revision = this._revisions[table] || 0;
+    const data = unwrap(await supabase.from(table).select('*').eq('couple_id', couple));
+    const records = (data || []).map(row => fromRow(table, row));
+
+    if (table === 'memories') await this._primePhotoUrls(records.map(record => record.photo));
+
+    // BLOQUEIO DE ESTADO OBSOLETO: Garante que queries em contas erradas não poluam a UI
+    if (generation === this._generation && revision === (this._revisions[table] || 0) && sameId(couple, this.currentCoupleId)) {
+        this[table] = records;
+    }
+    return this[table];
+},
 
     async _serialized(key, work) {
         const previous = this._queues.get(key) || Promise.resolve();
@@ -296,13 +425,21 @@ export const store = {
             if (saved?.id == null) throw new Error('O banco não retornou o registro salvo. Verifique permissões e geração de ID.');
             
             const record = fromRow(table, saved);
-            if (generation === this._generation && sameId(couple, this.currentCoupleId)) {
-                this._revisions[table] = (this._revisions[table] || 0) + 1;
-                const index = this[table].findIndex(entry => sameId(entry.id, record.id));
-                if (index < 0) this[table].push(record); else this[table][index] = record;
-                this.notify();
-            }
-            return record;
+if (table === 'memories') await this._primePhotoUrls([record.photo]);
+
+if (generation === this._generation && sameId(couple, this.currentCoupleId)) {
+    this._revisions[table] = (this._revisions[table] || 0) + 1;
+    const index = this[table].findIndex(entry => sameId(entry.id, record.id));
+    if (index < 0) this[table].push(record); else this[table][index] = record;
+    this.notify();
+}
+
+if (table === 'memories' && current?.photo && current.photo !== record.photo) {
+    try { await this.deletePhoto(current.photo); }
+    catch (error) { console.warn('Não foi possível remover a foto antiga da memória:', error); }
+}
+
+return record;
         });
     },
 
@@ -326,13 +463,18 @@ export const store = {
                 .eq('nook_version', existing.nook_version);
 
             const deleted = unwrap(await query.select('id'));
-            if (!deleted?.some(row => sameId(row.id, id))) throw new Error('O registro não foi excluído. Ele pode ter mudado ou a política do banco não permite excluir. Recarregue para conferir.');
-            
-            if (generation === this._generation && sameId(couple, this.currentCoupleId)) { 
-                this._revisions[table] = (this._revisions[table] || 0) + 1; 
-                this[table] = this[table].filter(item => !sameId(item.id, id)); 
-                this.notify(); 
-            }
+if (!deleted?.some(row => sameId(row.id, id))) throw new Error('O registro não foi excluído. Ele pode ter mudado ou a política do banco não permite excluir. Recarregue para conferir.');
+
+if (generation === this._generation && sameId(couple, this.currentCoupleId)) {
+    this._revisions[table] = (this._revisions[table] || 0) + 1;
+    this[table] = this[table].filter(item => !sameId(item.id, id));
+    this.notify();
+}
+
+if (table === 'memories' && existing.photo) {
+    try { await this.deletePhoto(existing.photo); }
+    catch (error) { console.warn('A memória foi excluída, mas não foi possível remover a foto antiga do Storage:', error); }
+}
         });
     },
 
@@ -383,7 +525,8 @@ export const store = {
         const dirty = new Set(); let timer;
         const readers = { expenses: () => this.fetchExpenses(), lists: () => this.fetchLists(), agenda: () => this.fetchAgenda(), goals: () => this.fetchGoals(), memories: () => this.fetchMemories(), notes: () => this.fetchNotes(), finances: () => this.fetchFinances(), moods: () => this.fetchMoods(), profiles: () => this.fetchProfile() };
 
-        this._realtimeSubscription = supabase.channel(`nook-${this.currentCoupleId}`)
+let subscribedOnce = false;
+this._realtimeSubscription = supabase.channel(`nook-${this.currentCoupleId}`)
             .on('postgres_changes', { event: '*', schema: 'public' }, payload => {
                 const id = payload.new?.couple_id ?? payload.old?.couple_id;
                 if (id != null && !sameId(id, this.currentCoupleId)) return;
@@ -397,9 +540,13 @@ export const store = {
                 }, 300);
             })
             .subscribe((status) => {
-                // ATUALIZAÇÃO REATIVA: Sincroniza se houve queda de rede ou background mode e acabou de reconectar
-                if (status === 'SUBSCRIBED') this.refreshData();
-            });
+    // A primeira assinatura vem logo após o carregamento inicial; não refaz as mesmas consultas.
+    // Em reconexões posteriores, sincroniza o que pode ter mudado enquanto o app ficou offline/background.
+    if (status === 'SUBSCRIBED') {
+        if (subscribedOnce) this.refreshData();
+        subscribedOnce = true;
+    }
+});
     },
 
     async fetchExpenses() { return this.fetchRecords('expenses'); },

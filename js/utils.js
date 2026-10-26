@@ -34,7 +34,7 @@ export const getAvatarHtml = (ownerId, size = '28px') => {
     const isP1 = ['IS', 'p1', profile.p1].includes(ownerId);
     const name = isP1 ? profile.p1 || 'P1' : profile.p2 || 'P2';
     const avatar = isP1 ? profile.avatarP1 : profile.avatarP2;
-    const photo = safeImageUrl(avatar);
+    const photo = safeImageUrl(store.getPhotoDisplayUrl(avatar));
     const cls = isP1 ? 'my-avatar' : 'partner-avatar';
     return photo
         ? `<div class="task-badge has-photo ${cls}" style="width:${safeSize};height:${safeSize};margin-left:0;background-image:${escapeHTML(imageBackground(photo))}"></div>`

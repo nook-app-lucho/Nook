@@ -1,4 +1,4 @@
-import { store, supabase } from '../store.js'; 
+import { store } from '../store.js'; 
 import { triggerHaptic, getInitials, runAction, validateImageFile, imageBackground, openModal, closeModal, initModalController } from '../utils.js'; 
 import { renderFinances } from './finances.js'; 
 import { renderHome } from './home.js'; 
@@ -28,12 +28,12 @@ const EMOJI_LIST = [
 ];
 
 export const renderAvatar = (elements, name, avatarData) => {
+    const photoUrl = store.getPhotoDisplayUrl(avatarData);
     elements.forEach(el => {
         if (!el) return;
-        // Verifica se é uma URL válida ou Base64 (foto)
-        if (avatarData && (avatarData.startsWith('data:image') || avatarData.startsWith('http'))) {
+        if (photoUrl) {
             el.textContent = '';
-            el.style.backgroundImage = imageBackground(avatarData);
+            el.style.backgroundImage = imageBackground(photoUrl);
             el.classList.add('has-photo');
         } else if (avatarData) {
             el.textContent = avatarData;
@@ -73,31 +73,10 @@ export const updateProfileUI = () => {
     if (propLabelVo) propLabelVo.textContent = `${p2}: `;
 };
 
-// Modificado para usar o Supabase Storage em vez de Base64
-const processImageFile = async (file, callback) => {
-    if (!file) return;
+const processImageFile = async (file, personId) => {
+    if (!file) return null;
     validateImageFile(file);
-
-    // Gerar um nome de arquivo único
-    const fileExt = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' }[file.type];
-    const fileName = `avatars/${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExt}`;
-
-    try {
-        // Upload para o bucket "photos"
-        const { data, error } = await supabase.storage
-            .from('photos')
-            .upload(fileName, file, { cacheControl: '3600', upsert: false });
-
-        if (error) throw error;
-
-        // Obter URL pública
-        const { data: publicUrlData } = supabase.storage
-            .from('photos')
-            .getPublicUrl(fileName);
-
-        // Retorna a URL para ser salva no banco
-        callback(publicUrlData.publicUrl);
-    } catch (err) { throw err; }
+    return store.uploadPhoto('avatars', file, { prefix: `avatar-${personId}` });
 };
 
 const initEmojiPicker = () => {
@@ -115,7 +94,10 @@ const initEmojiPicker = () => {
                 triggerHaptic(20);
                 const inputName = document.getElementById(`onboarding-${currentTargetPerson}`);
                 const preview = document.getElementById(`preview-${currentTargetPerson}`);
-                
+                const previousTemp = currentTargetPerson === 'p1' ? tempAvatarP1 : tempAvatarP2;
+                const persisted = currentTargetPerson === 'p1' ? store.profile?.avatarP1 : store.profile?.avatarP2;
+
+                if (previousTemp && previousTemp !== persisted) store.deletePhoto(previousTemp).catch(() => {});
                 if(currentTargetPerson === 'p1') tempAvatarP1 = emoji; else tempAvatarP2 = emoji;
                 renderAvatar([preview], inputName?.value || '', emoji);
                 closeEmojiPicker();
@@ -151,16 +133,20 @@ const setupAvatarPicker = (personId) => {
     btnFoto?.addEventListener('click', () => fileInput?.click());
     btnEmoji?.addEventListener('click', () => openEmojiPicker(personId));
     
-    // Atualizado para receber URL em vez de Base64
     fileInput?.addEventListener('change', async e => {
         const file = e.target.files[0];
         if (!file) return;
         await runAction(fileInput, async () => {
             uploadsPending++;
-            try { await processImageFile(file, url => {
-                if (personId === 'p1') tempAvatarP1 = url; else tempAvatarP2 = url;
-                renderAvatar([preview], inputName?.value || '', url); triggerHaptic(20);
-            }); } finally { uploadsPending--; }
+            try {
+                const previousTemp = personId === 'p1' ? tempAvatarP1 : tempAvatarP2;
+                const persisted = personId === 'p1' ? store.profile?.avatarP1 : store.profile?.avatarP2;
+                const path = await processImageFile(file, personId);
+                if (personId === 'p1') tempAvatarP1 = path; else tempAvatarP2 = path;
+                renderAvatar([preview], inputName?.value || '', path);
+                if (previousTemp && previousTemp !== persisted) store.deletePhoto(previousTemp).catch(() => {});
+                triggerHaptic(20);
+            } finally { uploadsPending--; }
         });
     });
 };

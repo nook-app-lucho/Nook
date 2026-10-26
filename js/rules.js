@@ -37,6 +37,7 @@ export const nonEmpty = (value, label = 'Texto') => {
     if (!text) throw new Error(`${label} é obrigatório.`);
     return text;
 };
+export const NOTE_REACTIONS = Object.freeze(['❤️', '😘', '☕']);
 export const financeShare = finances => {
     if (finances.model !== 'proportional') return 0.5;
     const p1 = numberValue(finances.incomeIS, 'Renda da primeira pessoa', { empty: true });
@@ -69,29 +70,49 @@ export const pendingSummary = expenses => {
 export const financialSummary = (expenses, finances, month) => {
     const categories = { moradia: 0, mercado: 0, lazer: 0, transporte: 0, outros: 0 };
     const pendingData = pendingSummary(expenses);
-    let total = 0, paidP1 = 0, paidP2 = 0;
+    let total = 0, monthPending = 0, monthPendingCount = 0, paidP1 = 0, paidP2 = 0;
     for (const expense of expenses || []) {
         let facts;
         try { facts = expenseFacts(expense); } catch { continue; }
+        if (expense.date.slice(0, 7) !== month) continue;
+
         const { amount, completed } = facts;
-        if (!completed || expense.date.slice(0, 7) === month) {
-            total = safeCentSum(total, amount);
-            const category = Object.hasOwn(categories, expense.category) ? expense.category : 'outros';
-            categories[category] = safeCentSum(categories[category], amount);
-            if (completed) {
-                if (expense.owner === 'IS') paidP1 = safeCentSum(paidP1, amount);
-                else if (expense.owner === 'VO') paidP2 = safeCentSum(paidP2, amount);
-                else {
-                    const half = Math.ceil(amount / 2);
-                    paidP1 = safeCentSum(paidP1, half); paidP2 = safeCentSum(paidP2, amount - half);
-                }
-            }
+        total = safeCentSum(total, amount);
+
+        const category = Object.hasOwn(categories, expense.category) ? expense.category : 'outros';
+        categories[category] = safeCentSum(categories[category], amount);
+
+        if (!completed) {
+            monthPending = safeCentSum(monthPending, amount);
+            monthPendingCount++;
+            continue;
+        }
+
+        if (expense.owner === 'IS') paidP1 = safeCentSum(paidP1, amount);
+        else if (expense.owner === 'VO') paidP2 = safeCentSum(paidP2, amount);
+        else {
+            const half = Math.ceil(amount / 2);
+            paidP1 = safeCentSum(paidP1, half);
+            paidP2 = safeCentSum(paidP2, amount - half);
         }
     }
     const share = financeShare(finances);
     const paid = safeCentSum(paidP1, paidP2);
     const targetP1 = Math.round(paid * share);
-    return { pending: pendingData.amount, pendingCount: pendingData.count, total, paidP1, paidP2, balance: paidP1 - targetP1, share, categories, invalid: pendingData.invalid };
+    return {
+        pending: pendingData.amount,
+        pendingCount: pendingData.count,
+        monthPending,
+        monthPendingCount,
+        total,
+        paid,
+        paidP1,
+        paidP2,
+        balance: paidP1 - targetP1,
+        share,
+        categories,
+        invalid: pendingData.invalid
+    };
 };
 const plainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 export const normalizeListItems = raw => {

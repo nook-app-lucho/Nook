@@ -32,9 +32,9 @@
         document.addEventListener('DOMContentLoaded', function () { if (bootstrapFailed) showBootstrapError(); });
     })();
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0" defer></script>
     <link rel="stylesheet" href="style.css">
-    <script src="https://unpkg.com/@phosphor-icons/web" defer></script>
+    <script src="https://unpkg.com/@phosphor-icons/web@2.1.2" defer></script>
     
     <script>
     (function() {
@@ -321,7 +321,7 @@
 </div>
             
             <div class="list-actions">
-                <button class="action-btn" id="btn-list-archive"><i class="ph ph-archive-box"></i> Remover Concluídas</button>
+<button class="action-btn" id="btn-list-archive"><i class="ph ph-trash"></i> Limpar Concluídas</button>
             </div>
             
             <form id="form-add-task" class="add-item-bar">
@@ -728,6 +728,21 @@
             <div class="sheet-body flex-col gap-12">
                 <button id="btn-rename-list" class="btn-primary btn-secondary"><i class="ph ph-pencil-simple"></i> Renomear Lista</button>
                 <button id="btn-delete-list" class="btn-primary btn-danger-light"><i class="ph ph-trash"></i> Excluir Lista Inteira</button>
+            </div>
+        </div>
+
+
+        <!-- Modal: Limpar itens concluídos -->
+        <div class="bottom-sheet" id="clear-completed-bottom-sheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-header">
+                <h2>Limpar concluídas</h2>
+                <button class="btn-icon btn-close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="sheet-body flex-col gap-12">
+                <p id="clear-completed-message" class="empty-state"></p>
+                <button id="btn-confirm-clear-completed" type="button" class="btn-primary btn-danger-light"><i class="ph ph-trash"></i> Excluir concluídas</button>
+                <button type="button" class="btn-primary btn-secondary btn-close-modal">Cancelar</button>
             </div>
         </div>
         
