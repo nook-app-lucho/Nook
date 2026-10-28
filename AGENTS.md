@@ -307,18 +307,18 @@ Não muda:
 
 Use `captureEdit()` + `saveFormEdit()`.
 
-### Limitação de autoria
+### Identidade e autorização de autoria
 
-`notes` ainda não possui um identificador estável de autor. A UI usa o texto `owner` para decidir se mostra a edição.
+`notes.created_by` é a identidade estável do autor e aceita `p1`, `p2` ou `null` para registros legacy ambíguos.
 
-Isso **não é uma barreira de segurança forte**.
+Regras:
 
-Se a tarefa exigir garantir no backend que somente o criador edita o recado:
+- novo recado sempre grava `created_by = store.getLoggedUser()`;
+- usar `created_by` prioritariamente para decidir autor/editar/excluir e para resolver o nome atual de apresentação;
+- `owner` permanece por compatibilidade e apresentação, não como identidade primária;
+- recado legacy com `created_by = null` pode usar o fallback textual existente; não inventar backfill se não for determinístico.
 
-1. não invente lógica adicional por nome;
-2. proponha migração para um identificador estável (`created_by` ou equivalente);
-3. proponha policy/RPC correspondente;
-4. não altere `setup.sql` silenciosamente.
+Isso **não é autorização forte no banco**. Se a tarefa exigir impedir tecnicamente o parceiro de atualizar recado alheio, propor policy/RPC específica; não misturar essa feature com a identidade estável.
 
 ## Metas
 
@@ -343,6 +343,8 @@ Regras obrigatórias:
 
 Histórico financeiro deve continuar usando normalização em centavos; hábito deve continuar usando inteiros.
 
+`canvas-confetti` foi removido. Conclusão de meta usa badge, haptic já existente e microanimação CSS discreta, respeitando `prefers-reduced-motion`. Não reintroduzir biblioteca de partículas sem decisão explícita.
+
 ## Memórias e fotos
 
 O viewer de memória usa dados já carregados e não deve fazer query adicional apenas para abrir.
@@ -359,9 +361,18 @@ qualidade: 0,82
 
 GIF permanece original. Não duplicar compressão em onboarding/home/outros módulos.
 
+## Listas
+
+- abas continuam representando todas as listas;
+- a área de itens deve renderizar apenas `activeList.items`;
+- não voltar a criar itens ocultos de outras listas no DOM;
+- preservar filtros, concluídas, drag e roleta no contexto da lista ativa.
+
 ## Agenda
 
 - criação e edição usam o mesmo formulário;
+- `agenda.time = null` significa evento **Dia todo**; nunca usar `00:00`, `23:59` ou outro horário fake como sentinel;
+- na ordenação atual, Dia todo vem antes dos eventos com horário;
 - edição deve usar `captureEdit()` + `saveFormEdit()`;
 - ao criar, preservar a data atualmente selecionada na Agenda;
 - autoria atual usa `created_by = p1/p2`;
@@ -374,7 +385,10 @@ GIF permanece original. Não duplicar compressão em onboarding/home/outros mód
 - resumo/acerto continua limitado ao mês selecionado;
 - status de vencimento de pendentes deve usar `expenseDueStatus()`;
 - despesa paga não deve mostrar atraso;
-- copy do acerto pode mudar, mas a matemática deve continuar vindo de `financialSummary().balance`.
+- copy do acerto pode mudar, mas a matemática deve continuar vindo de `financialSummary().balance`;
+- o sheet de configuração financeira deve capturar `id + nook_version` quando abrir e salvar com essa versão esperada;
+- nunca incrementar `nook_version` manualmente no frontend;
+- em `FINANCE_CONFLICT`, recarregar configuração atual e informar o usuário em vez de sobrescrever silenciosamente.
 
 # Regras para Supabase
 
@@ -395,7 +409,10 @@ Se código e SQL divergirem:
 
 - derivar usuário da sessão autenticada;
 - logout deve limpar estado compartilhado;
-- nunca reutilizar estado carregado antes de troca de sessão.
+- nunca reutilizar estado carregado antes de troca de sessão;
+- recuperação de senha deve usar o client Supabase existente, `resetPasswordForEmail()` + evento `PASSWORD_RECOVERY` + `updateUser({ password })`;
+- `redirectTo` deve ser derivado da origem/path atuais, nunca de domínio Vercel hardcoded;
+- não logar/armazenar senha.
 
 ## RLS
 
@@ -468,7 +485,7 @@ Versões atuais:
 ```text
 Supabase JS: 2.118.0
 Phosphor Web: 2.1.2
-Cache: nook-v1.13
+Cache: nook-v1.15
 ```
 
 # Inicialização e listeners

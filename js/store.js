@@ -72,7 +72,8 @@ const compressImage = async file => {
     }
 };
 
-const emptyFinances = () => ({ model: '50/50', incomeIS: 0, incomeVO: 0, settleMode: 'transfer', configured: false });
+const emptyFinances = () => ({ id: null, model: '50/50', incomeIS: 0, incomeVO: 0, settleMode: 'transfer', configured: false, nook_version: null });
+const financeFromRow = row => row ? ({ id: row.id, model: row.model, incomeIS: Number(row.income_is), incomeVO: Number(row.income_vo), settleMode: row.settle_mode, configured: row.configured, nook_version: row.nook_version }) : emptyFinances();
 
 const readTheme = () => {
     try { const value = JSON.parse(localStorage.getItem('nook_theme') || '"system"'); return ['system', 'light', 'dark'].includes(value) ? value : 'system'; }
@@ -97,14 +98,17 @@ const toRow = (table, item) => {
     const row = {};
     for (const key of fields[table]) if (item[key] !== undefined) row[key] = item[key];
     if (table === 'agenda' && item.createdBy !== undefined) row.created_by = item.createdBy;
-    if (table === 'notes' && item.expiresAt !== undefined) row.expires_at = item.expiresAt;
+    if (table === 'notes') {
+        if (item.expiresAt !== undefined) row.expires_at = item.expiresAt;
+        if (item.createdBy !== undefined) row.created_by = item.createdBy;
+    }
     return row;
 };
 
 const fromRow = (table, row) => {
     const item = { ...row };
     if (table === 'agenda') { item.createdBy = row.created_by; delete item.created_by; }
-    if (table === 'notes') { item.expiresAt = row.expires_at; item.reactions = Array.isArray(row.reactions) ? row.reactions : []; delete item.expires_at; }
+    if (table === 'notes') { item.expiresAt = row.expires_at; item.createdBy = row.created_by ?? null; item.reactions = Array.isArray(row.reactions) ? row.reactions : []; delete item.expires_at; delete item.created_by; }
     if (table === 'lists') {
         const normalized = normalizeListItems(row.items);
         item.items = normalized.items;
@@ -130,11 +134,13 @@ const validate = (table, input) => {
     if (table === 'lists') { item.name = nonEmpty(item.name, 'Nome da lista'); if (item._invalidItems?.length || normalizeListItems(item.items).invalid.length) throw new Error('Esta lista tem itens inválidos. Os dados originais estão preservados; revise a lista antes de alterá-la.'); }
     if (table === 'agenda') {
         item.title = nonEmpty(item.title, 'Título');
-        if (!validDate(item.date) || !/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(item.time || '')) throw new Error('Informe data e horário válidos.');
+        const validTime = item.time === null || /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(item.time || '');
+        if (!validDate(item.date) || !validTime) throw new Error('Informe uma data válida e, quando houver horário, use um horário válido.');
     }
     if (table === 'memories') { item.title = nonEmpty(item.title, 'Título'); if (!validDate(item.date)) throw new Error('Data da memória inválida.'); }
     if (table === 'notes') {
         item.text = nonEmpty(item.text, 'Recado'); if (!Array.isArray(item.reactions)) item.reactions = [];
+        if (item.createdBy != null && !['p1', 'p2'].includes(item.createdBy)) throw new Error('Autor do recado inválido.');
         if (!item.reactions.every(emoji => NOTE_REACTIONS.includes(emoji))) throw new Error('Reação inválida.');
         if (!Number.isFinite(Date.parse(item.date)) || (item.expiresAt && !Number.isFinite(Date.parse(item.expiresAt)))) throw new Error('Data do recado inválida.');
     }
@@ -297,6 +303,19 @@ export const store = {
     },
 
     async signUp(email, password) { return unwrap(await supabase.auth.signUp({ email, password })); },
+
+    async requestPasswordReset(email, redirectTo) {
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        if (!normalizedEmail || !normalizedEmail.includes('@')) throw new Error('Informe um e-mail válido.');
+        if (!redirectTo) throw new Error('Não foi possível determinar o endereço de retorno do Nook.');
+        return unwrap(await supabase.auth.resetPasswordForEmail(normalizedEmail, { redirectTo }));
+    },
+
+    async updatePassword(password) {
+        const value = String(password || '');
+        if (value.length < 6) throw new Error('A nova senha precisa ter pelo menos 6 caracteres.');
+        return unwrap(await supabase.auth.updateUser({ password: value }));
+    },
 
     async logout() {
         unwrap(await supabase.auth.signOut());
@@ -531,22 +550,56 @@ if (table === 'memories' && existing.photo) {
         const generation = this._generation;
         const data = unwrap(await supabase.from('finances').select('*').eq('couple_id', this.requireCouple()).maybeSingle());
         if (generation !== this._generation) return;
-        this.finances = data ? { model: data.model, incomeIS: data.income_is, incomeVO: data.income_vo, settleMode: data.settle_mode, configured: data.configured } : emptyFinances();
+        this.finances = financeFromRow(data);
+        return this.finances;
     },
 
-    async setFinances(data) {
+    async setFinances(data, editContext = null) {
         const couple = this.requireCouple(), generation = this._generation;
         const validated = { ...data, incomeIS: numberValue(data.incomeIS, 'Renda da primeira pessoa', { empty: true }), incomeVO: numberValue(data.incomeVO, 'Renda da segunda pessoa', { empty: true }) };
         if (!['50/50', 'proportional', '100-p1', '100-p2', 'single', 'custom'].includes(data.model)) throw new Error('Modelo de divisão inválido.');
         const row = { model: validated.model, income_is: validated.incomeIS, income_vo: validated.incomeVO, settle_mode: validated.settleMode, configured: true };
-        
-        await this._serialized('finances', async () => {
+
+        return this._serialized('finances', async () => {
             if (generation !== this._generation || !sameId(couple, this.currentCoupleId)) throw new Error('Sessão alterada.');
-            const existing = unwrap(await supabase.from('finances').select('id').eq('couple_id', couple).maybeSingle());
-            const query = existing ? supabase.from('finances').update(row).eq('id', existing.id).eq('couple_id', couple) : supabase.from('finances').insert({ ...row, couple_id: couple });
-            unwrap(await query.select().single()); 
-            this.finances = validated; 
+
+            let response;
+            const current = this.finances || emptyFinances();
+            const expected = editContext || { id: current.id, nook_version: current.nook_version };
+            if (expected.id) {
+                if (!Number.isSafeInteger(expected.nook_version) || expected.nook_version < 1) throw new Error('Controle de versão da configuração financeira ausente. Recarregue antes de salvar.');
+                response = await supabase.from('finances')
+                    .update(row)
+                    .eq('id', expected.id)
+                    .eq('couple_id', couple)
+                    .eq('nook_version', expected.nook_version)
+                    .select('*')
+                    .maybeSingle();
+
+                if (response.error) unwrap(response);
+                if (!response.data) {
+                    await this.fetchFinances();
+                    this.notify();
+                    const error = new Error('As configurações foram alteradas em outro dispositivo. Atualizamos os dados para você.');
+                    error.code = 'FINANCE_CONFLICT';
+                    throw error;
+                }
+            } else {
+                response = await supabase.from('finances').insert({ ...row, couple_id: couple }).select('*').single();
+                if (response.error?.code === '23505') {
+                    await this.fetchFinances();
+                    this.notify();
+                    const error = new Error('As configurações foram criadas em outro dispositivo. Atualizamos os dados para você.');
+                    error.code = 'FINANCE_CONFLICT';
+                    throw error;
+                }
+                unwrap(response);
+            }
+
+            if (generation !== this._generation || !sameId(couple, this.currentCoupleId)) throw new Error('Sessão alterada.');
+            this.finances = financeFromRow(response.data);
             this.notify();
+            return this.finances;
         });
     },
 

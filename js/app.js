@@ -1,4 +1,4 @@
-import { store } from './store.js';
+import { store, supabase } from './store.js';
 import { initNavigation, renderActiveView } from './modules/navigation.js';
 import { initOnboarding, updateProfileUI } from './modules/onboarding.js';
 import { initHome } from './modules/home.js';
@@ -8,6 +8,22 @@ import { initGoals } from './modules/goals.js';
 import { initFinances } from './modules/finances.js';
 import { initSettings } from './modules/settings.js';
 import { runAction, showToast, humanizeError } from './utils.js';
+
+let passwordRecoveryMode = false;
+supabase.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY') {
+        passwordRecoveryMode = true;
+        window.dispatchEvent(new CustomEvent('nook:password-recovery'));
+    }
+});
+
+const passwordResetRedirect = () => new URL(window.location.pathname || '/', window.location.origin).href;
+const clearAuthRedirectParams = () => window.history.replaceState({}, document.title, window.location.pathname || '/');
+const authRedirectError = () => {
+    const query = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    return query.get('error_description') || hash.get('error_description') || '';
+};
 
 // Independe da duração da consulta de sessão e de um evento load futuro.
 if ('serviceWorker' in navigator) {
@@ -58,7 +74,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         try {
+            if (passwordRecoveryMode) { showView('view-password-recovery'); return; }
+
             const session = await store.checkSession();
+            if (passwordRecoveryMode) { showView('view-password-recovery'); return; }
             if (!session) { showView('view-login'); return; }
 
             await store.fetchProfile();
@@ -115,6 +134,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     window.addEventListener('nook:profile-saved', () => { routeApp().catch(() => {}); });
     window.addEventListener('nook:sync-error', () => showToast('A sincronização falhou. Tente carregar novamente antes de alterar os dados.'));
+    window.addEventListener('nook:password-recovery', () => showView('view-password-recovery'));
 
     const refresh = e => runAction(e.currentTarget, routeApp);
     document.getElementById('btn-retry-load')?.addEventListener('click', refresh);
@@ -123,8 +143,50 @@ document.addEventListener('DOMContentLoaded', async () => {
         signUp = !signUp;
         document.getElementById('auth-subtitle').textContent = signUp ? 'Crie sua conta para começar.' : 'Entre para acessar o espaço do casal.';
         document.getElementById('btn-auth-submit').textContent = signUp ? 'Criar Minha Conta' : 'Entrar no Nook';
+        document.getElementById('btn-forgot-password')?.classList.toggle('d-none', signUp);
         document.getElementById('btn-toggle-auth').textContent = signUp ? 'Já tem uma conta? Fazer Login' : 'Não tem conta? Criar conta nova';
     });
+    document.getElementById('btn-forgot-password')?.addEventListener('click', () => {
+        const forgotEmail = document.getElementById('forgot-email');
+        const loginEmail = document.getElementById('login-email')?.value?.trim();
+        if (forgotEmail && loginEmail) forgotEmail.value = loginEmail;
+        showView('view-forgot-password');
+    });
+    document.getElementById('btn-forgot-back-login')?.addEventListener('click', () => showView('view-login'));
+    document.getElementById('btn-recovery-back-login')?.addEventListener('click', e => runAction(e.currentTarget, () => store.logout()));
+
+    document.getElementById('form-forgot-password')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        await runAction(form, async () => {
+            const email = document.getElementById('forgot-email').value;
+            await store.requestPasswordReset(email, passwordResetRedirect());
+            showToast('Se existir uma conta com esse e-mail, o link de recuperação foi enviado ✓');
+        });
+    });
+
+    document.getElementById('form-password-recovery')?.addEventListener('submit', async e => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        const errorNode = document.getElementById('recovery-password-error');
+        if (errorNode) { errorNode.textContent = ''; errorNode.classList.add('d-none'); }
+        await runAction(form, async () => {
+            const password = document.getElementById('recovery-password').value;
+            const confirmation = document.getElementById('recovery-password-confirm').value;
+            if (password.length < 6) throw new Error('A nova senha precisa ter pelo menos 6 caracteres.');
+            if (password !== confirmation) {
+                if (errorNode) { errorNode.textContent = 'As senhas não coincidem.'; errorNode.classList.remove('d-none'); }
+                throw new Error('As senhas não coincidem.');
+            }
+            await store.updatePassword(password);
+            passwordRecoveryMode = false;
+            clearAuthRedirectParams();
+            form.reset();
+            showToast('Senha atualizada ✓');
+            await routeApp();
+        });
+    });
+
     document.getElementById('form-login')?.addEventListener('submit', async e => {
         e.preventDefault();
         const form = e.currentTarget;
@@ -148,6 +210,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-join-nook')?.addEventListener('click', e => runAction(e.currentTarget, async () => { await store.joinNook(document.getElementById('input-invite-code').value); await routeApp(); }));
     for (const id of ['btn-join-logout', 'btn-pending-logout']) {
         document.getElementById(id)?.addEventListener('click', e => runAction(e.currentTarget, () => store.logout()));
+    }
+
+    const redirectError = authRedirectError();
+    if (redirectError) {
+        clearAuthRedirectParams();
+        showToast('Este link de recuperação é inválido ou expirou. Solicite um novo link.', 'ph-warning-circle');
     }
 
     await runAction(null, routeApp);

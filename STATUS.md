@@ -1,8 +1,8 @@
 # STATUS — Nook
 
-**Última atualização:** 26/10/2026  
-**Baseline atual:** `Nook - 26 Out v4.zip`  
-**Estado:** MVP pessoal funcional. P0 de confiabilidade e rodadas P1/P1.1/P1.2/P1.3 implementadas; validação estática concluída; smoke test real P1/P2 ainda pendente.
+**Última atualização:** 27/10/2026  
+**Baseline atual:** `Nook - 27 Out v2` + rodada de hardening atual  
+**Estado:** MVP pessoal funcional. Fluxos centrais implementados; Auth recovery, autoria estável do Mural, Agenda Dia todo, locking financeiro, Listas active-only e remoção do confetti implementados no código; validação estática concluída; migration e smoke test real ainda precisam ser executados no Supabase.
 
 # Fase atual do produto
 
@@ -23,7 +23,7 @@ O Nook já cobre o ciclo principal de uso de um casal em um único PWA:
 - ajustes/tema;
 - PWA com app shell em cache.
 
-As últimas rodadas completaram os fluxos essenciais dos módulos existentes. O foco imediato não deve ser abrir novas áreas do produto, e sim **validar a baseline v4 em uso real com duas contas/dispositivos** e corrigir qualquer regressão observada antes de avançar para features de conveniência.
+As últimas rodadas completaram os fluxos essenciais dos módulos existentes. O foco imediato não deve ser abrir novas áreas do produto, e sim **validar a baseline de 27/10 em uso real com duas contas/dispositivos** e corrigir qualquer regressão observada antes de avançar para features de conveniência.
 
 Prioridade:
 
@@ -235,12 +235,27 @@ Os valores persistidos não foram migrados.
 - `prefers-reduced-motion` agora também reduz transições/animações gerais;
 - empty states alterados usam CTA contextual único quando aplicável.
 
+## 27 Out — hardening técnico e consolidação
+
+Implementado no código:
+
+- recuperação de senha com Supabase Auth (`PASSWORD_RECOVERY`);
+- `notes.created_by` como identidade estável para novos recados, com fallback legacy;
+- Listas renderizam somente itens da lista ativa;
+- Agenda aceita `time = null` e exibe **Dia todo**;
+- configuração financeira usa optimistic locking com versão capturada ao abrir o sheet;
+- `canvas-confetti` removido de HTML, JS e Service Worker;
+- conclusão de meta usa microanimação CSS discreta;
+- `style.css` consolidado de forma conservadora, preservando a ordem necessária ao visual atual.
+
+Backend: a migration precisa ser executada para adicionar `notes.created_by` e tornar `agenda.time` nullable. `setup.sql` já representa o schema final.
+
 # Estado atual do Service Worker
 
 Cache atual:
 
 ```text
-nook-v1.13
+nook-v1.15
 ```
 
 Dependências externas sincronizadas entre `index.html` e `sw.js`:
@@ -252,19 +267,21 @@ Phosphor Web: 2.1.2
 
 O Service Worker continua responsável apenas pelo app shell/assets estáticos. Não existe fila offline de mutações.
 
-# Validação feita sobre a v4
+# Validação feita sobre a baseline de 27/10
 
 ## Checagens estáticas
 
-Executadas sobre `Nook - 26 Out v4.zip`:
+Executadas sobre a cópia de trabalho derivada de `Nook - 27 Out v2.zip`:
 
 - todos os arquivos JS e `sw.js` passam em `node --check`;
 - nenhum ID duplicado em `index.html`;
 - bottom bar possui exatamente 5 destinos;
 - `alert()`, `confirm()` e `prompt()` não aparecem nos fluxos da aplicação;
 - versões Supabase/Phosphor estão sincronizadas entre HTML e Service Worker;
-- v4 é byte a byte igual ao snapshot esperado da rodada P1.3;
-- regressão curta confirmou viewer/lazy/compressão, Listas, Agenda, Finanças, convite, mood, mural e Storage privado.
+- sintaxe JavaScript e Service Worker validada;
+- regressão estática confirma que features anteriores permanecem presentes;
+- migration separada preparada para `notes.created_by` e `agenda.time` nullable;
+- consolidação CSS feita de forma conservadora, sem reordenação ampla de cascade.
 
 ## Regras de Metas testadas isoladamente
 
@@ -285,7 +302,8 @@ A validação estática não substitui uso contra o Supabase implantado.
 Smoke test prioritário:
 
 ```text
-P1 cria Nook
+recovery de senha (solicitar link → trocar senha → login)
+→ P1 cria Nook
 → compartilha convite
 → P2 entra
 → onboarding
@@ -294,9 +312,9 @@ P1 cria Nook
 → recado temporário e permanente
 → edição do próprio recado
 → mood P1/P2
-→ lista com pendentes/concluídos
-→ agenda criada/editada + Ciente
-→ finanças com vencimentos/acerto
+→ lista com pendentes/concluídos + troca entre 3 listas confirmando DOM active-only
+→ agenda criada/editada + Ciente + evento Dia todo
+→ finanças com vencimentos/acerto + conflito de configuração em dois navegadores
 → meta financeira e hábito
 → editar meta
 → concluir meta
@@ -313,19 +331,15 @@ Também validar:
 - conflito de edição em duas janelas;
 - Storage privado entre P1/P2 do mesmo casal;
 - acesso negado entre casais diferentes;
-- cache `nook-v1.13` após deploy.
+- cache `nook-v1.15` após deploy.
 
 # Riscos abertos
 
-## 1. Autoria de recado não possui identificador estável
+## 1. Autorização de recados ainda é por casal
 
-`notes` ainda não possui `created_by`.
+Após a migration, `notes.created_by` fornece identidade estável para novos recados; registros legacy ambíguos podem permanecer `NULL` e usar fallback textual.
 
-A UI compara `note.owner` com `store.getAuthorName()` para decidir se mostra edição.
-
-Isso é suficiente para o MVP pessoal, mas não é autorização forte.
-
-Se autoria forte virar requisito, a correção deve ser no schema/policy com identificador estável; não adicionar mais lógica baseada em nome no frontend.
+A UI usa `created_by` prioritariamente para decidir autor/editar/excluir. Isso resolve identidade, mas não cria ownership enforcement no banco: a RLS continua por casal. Autorização forte por autor exigiria policy/RPC específica e permanece fora do escopo.
 
 ## 2. Compromissos legados podem não ter `created_by`
 
@@ -357,9 +371,9 @@ Isso é decisão consciente de simplicidade.
 
 Ainda é aceitável para o tamanho atual. Não dividir preventivamente.
 
-## 6. Renderização de Listas ainda cria DOM para todas as listas
+## 6. Renderização de Listas
 
-A v4 continua renderizando itens de todas as listas e escondendo os que não pertencem à lista ativa.
+A área de itens agora renderiza somente a lista ativa; abas continuam representando todas as listas.
 
 Não foi encontrada evidência objetiva de problema no volume atual. O P2 de renderizar somente a lista ativa permanece adiado.
 
@@ -369,8 +383,10 @@ Não foi encontrada evidência objetiva de problema no volume atual. O P2 de ren
 
 Ordem recomendada:
 
-1. publicar/aplicar a baseline v4;
-2. confirmar `nook-v1.13` em Cache Storage;
+1. rodar a migration SQL desta rodada;
+2. autorizar a URL de password recovery no Supabase Auth;
+3. publicar/aplicar a baseline atual;
+4. confirmar `nook-v1.15` em Cache Storage;
 3. rodar o smoke test P1/P2;
 4. registrar regressões reais;
 5. corrigir regressões antes de ampliar o produto;

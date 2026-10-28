@@ -1,12 +1,11 @@
-const CACHE_NAME = 'nook-v1.13';
+const CACHE_NAME = 'nook-v1.15';
 const PREFIX = 'nook-';
 const LOCAL_ASSETS = [ './', './index.html', './style.css', './manifest.json', './js/app.js', './js/store.js', './js/rules.js', './js/utils.js', './js/modules/navigation.js', './js/modules/onboarding.js', './js/modules/home.js', './js/modules/lists.js', './js/modules/agenda.js', './js/modules/goals.js', './js/modules/finances.js', './js/modules/settings.js', './img/icon-192.png', './img/icon-512.png', './img/icon.svg' ];
 const OPTIONAL_ASSETS = [
     'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0',
     'https://unpkg.com/@phosphor-icons/web@2.1.2',
     'https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/default.css',
-    'https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js',
-    'https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js'
+    'https://cdn.jsdelivr.net/npm/mobile-drag-drop@2.3.0-rc.2/index.min.js'
 ];
 self.addEventListener('install', event => {
     event.waitUntil((async () => {

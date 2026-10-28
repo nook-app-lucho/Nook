@@ -3,6 +3,7 @@ import { triggerHaptic, formatCurrency, escapeHTML, getAvatarHtml, openModal, op
 
 import { localDate, sameId, financeShare, financialSummary, validateExpense, validDate, expenseDueStatus } from '../rules.js';
 let expenseEditContext = null;
+let financeSetupContext = null;
 let selectedHistoryMonth = localDate().slice(0, 7); 
 
 const CAT_INFO = {
@@ -267,12 +268,28 @@ export const initFinances = () => {
         document.getElementById('fin-income-inputs')?.classList.toggle('d-none', model !== 'proportional');
         document.getElementById('fin-settle-mode-group')?.classList.toggle('d-none', !['50/50', 'proportional'].includes(model));
     };
+    const fillSetupForm = ({ syncOriginal = false } = {}) => {
+        const fields = [
+            ['fin-model-select', store.finances.model || '50/50'],
+            ['fin-income-is', store.finances.incomeIS ?? 0],
+            ['fin-income-vo', store.finances.incomeVO ?? 0],
+            ['fin-settle-mode-select', store.finances.settleMode || 'transfer']
+        ];
+        fields.forEach(([id, value]) => {
+            const field = document.getElementById(id);
+            if (!field) return;
+            field.value = value;
+            if (syncOriginal) field.dataset.originalValue = String(value);
+        });
+        updateSetupVisibility();
+    };
     const openSetup = () => {
-        document.getElementById('fin-model-select').value = store.finances.model || '50/50';
-        document.getElementById('fin-income-is').value = store.finances.incomeIS ?? 0;
-        document.getElementById('fin-income-vo').value = store.finances.incomeVO ?? 0;
-        document.getElementById('fin-settle-mode-select').value = store.finances.settleMode || 'transfer';
-        updateSetupVisibility(); openModal('fin-setup-bottom-sheet');
+        fillSetupForm();
+        financeSetupContext = {
+            id: store.finances.id ?? null,
+            nook_version: store.finances.nook_version ?? null
+        };
+        openModal('fin-setup-bottom-sheet');
     };
     document.getElementById('btn-open-fin-setup')?.addEventListener('click', openSetup);
     document.getElementById('fin-setup-banner')?.addEventListener('click', openSetup);
@@ -280,7 +297,22 @@ export const initFinances = () => {
     document.getElementById('form-fin-setup')?.addEventListener('submit', async e => {
         e.preventDefault(); const form = e.currentTarget;
         await runAction(form, async () => {
-            await store.setFinances({ model: document.getElementById('fin-model-select').value, incomeIS: document.getElementById('fin-income-is').value, incomeVO: document.getElementById('fin-income-vo').value, settleMode: document.getElementById('fin-settle-mode-select').value, configured: true });
+            try {
+                await store.setFinances({ model: document.getElementById('fin-model-select').value, incomeIS: document.getElementById('fin-income-is').value, incomeVO: document.getElementById('fin-income-vo').value, settleMode: document.getElementById('fin-settle-mode-select').value, configured: true }, financeSetupContext);
+            } catch (error) {
+                if (error?.code === 'FINANCE_CONFLICT') {
+                    fillSetupForm({ syncOriginal: true });
+                    financeSetupContext = {
+                        id: store.finances.id ?? null,
+                        nook_version: store.finances.nook_version ?? null
+                    };
+                }
+                throw error;
+            }
+            financeSetupContext = {
+                id: store.finances.id ?? null,
+                nook_version: store.finances.nook_version ?? null
+            };
             triggerHaptic(30); renderFinances(); closeAllModals(true); showToast('Configuração financeira salva ✓');
         });
     });

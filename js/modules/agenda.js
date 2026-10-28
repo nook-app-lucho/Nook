@@ -113,6 +113,23 @@ export const renderDateScroller = () => {
 };
 
 const firstName = (value, fallback) => String(value || '').trim().split(/\s+/)[0] || fallback;
+const eventTimeLabel = event => event?.time ? String(event.time).slice(0, 5) : 'Dia todo';
+const compareAgendaTime = (a, b) => {
+    const aAllDay = !a?.time;
+    const bAllDay = !b?.time;
+    if (aAllDay !== bAllDay) return aAllDay ? -1 : 1;
+    return String(a?.time || '').localeCompare(String(b?.time || ''));
+};
+const syncAllDayControls = () => {
+    const allDay = document.getElementById('event-all-day')?.checked === true;
+    const timeInput = document.getElementById('event-time');
+    const timeGroup = document.getElementById('event-time-group');
+    if (timeInput) {
+        timeInput.required = !allDay;
+        timeInput.disabled = allDay;
+    }
+    timeGroup?.classList.toggle('d-none', allDay);
+};
 
 const openAgendaEditor = event => {
     agendaEditContext = store.captureEdit('agenda', event.id);
@@ -124,6 +141,8 @@ const openAgendaEditor = event => {
     document.getElementById('event-title').value = opened.title || '';
     document.getElementById('event-date').value = opened.date || '';
     document.getElementById('event-time').value = String(opened.time || '').slice(0, 5);
+    document.getElementById('event-all-day').checked = !opened.time;
+    syncAllDayControls();
     document.getElementById('event-owner').value = opened.owner || OWNER.COUPLE;
     document.getElementById('event-subtitle').value = opened.subtitle || '';
     document.getElementById('event-modal-title').textContent = 'Editar Compromisso';
@@ -156,6 +175,7 @@ export const renderAgendaView = () => {
         const safeSubtitle = ev.subtitle ? escapeHTML(ev.subtitle) : '';
         const [, em, ed] = validDate(ev.date) ? ev.date.split('-') : ['', '?', '?'];
         const dateTag = showBadge ? `<span class="agenda-date-badge">${ed}/${em}</span>` : '';
+        const timeLabel = eventTimeLabel(ev);
         const myPersonId = store.getLoggedUser();
         const creatorName = ev.createdBy === 'p1'
             ? firstName(store.profile?.p1, 'P1')
@@ -185,7 +205,7 @@ export const renderAgendaView = () => {
         li.innerHTML = `
             <div class="task-text flex-col flex-1">
                 <strong class="task-item-title">${safeTitle}</strong>
-                <div class="task-item-subtitle">${dateTag} ${escapeHTML(ev.time)} ${safeSubtitle ? '- ' + safeSubtitle : ''}</div>
+                <div class="task-item-subtitle">${dateTag} ${escapeHTML(timeLabel)} ${safeSubtitle ? '- ' + safeSubtitle : ''}</div>
                 <div class="agenda-created-by">${escapeHTML(creatorText)}</div>
                 ${awarenessSection}
             </div>
@@ -221,14 +241,14 @@ export const renderAgendaView = () => {
     };
     
     // Alocamos TODOS os eventos na lista principal, mas ocultos
-    const allEvents = [...store.agenda].sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
+    const allEvents = [...store.agenda].sort(compareAgendaTime);
     allEvents.forEach(ev => {
         const li = createEl(ev, false);
         li.dataset.date = ev.date;
         selectedListEl.appendChild(li);
     });
 
-    const futureEvents = store.agenda.filter(ev => ev.date >= todayStr).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || String(a.time || '').localeCompare(String(b.time || '')));
+    const futureEvents = store.agenda.filter(ev => ev.date >= todayStr).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')) || compareAgendaTime(a, b));
     if (futureEvents.length === 0) allListEl.innerHTML = `<li class="empty-state">Nenhum compromisso agendado para o futuro.</li>`;
     else futureEvents.forEach(ev => allListEl.appendChild(createEl(ev, true)));
 
@@ -274,6 +294,7 @@ export const initAgenda = () => {
     });
 
     const form = document.getElementById('form-add-event');
+    document.getElementById('event-all-day')?.addEventListener('change', syncAllDayControls);
     document.getElementById('btn-open-event-modal')?.addEventListener('click', () => {
         agendaEditContext = null;
         editingAgendaId = null;
@@ -281,6 +302,8 @@ export const initAgenda = () => {
         form?.reset();
         document.getElementById('event-id').value = '';
         document.getElementById('event-date').value = selectedDateStr;
+        document.getElementById('event-all-day').checked = false;
+        syncAllDayControls();
         document.getElementById('event-modal-title').textContent = 'Novo Compromisso';
         document.getElementById('btn-submit-event').textContent = 'Salvar Compromisso';
         openModal('event-bottom-sheet');
@@ -293,7 +316,7 @@ export const initAgenda = () => {
             const patch = {
                 title: document.getElementById('event-title').value,
                 date: document.getElementById('event-date').value,
-                time: document.getElementById('event-time').value,
+                time: document.getElementById('event-all-day').checked ? null : document.getElementById('event-time').value,
                 owner: document.getElementById('event-owner').value,
                 subtitle: document.getElementById('event-subtitle').value
             };

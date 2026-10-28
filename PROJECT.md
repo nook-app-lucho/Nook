@@ -93,8 +93,7 @@ Versões atuais:
 
 - `@supabase/supabase-js@2.118.0`;
 - `@phosphor-icons/web@2.1.2`;
-- `mobile-drag-drop@2.3.0-rc.2`;
-- `canvas-confetti@1.6.0`.
+- `mobile-drag-drop@2.3.0-rc.2`.
 
 O `sw.js` usa exatamente as mesmas URLs/versionamentos das dependências externas carregadas pelo `index.html`.
 
@@ -339,7 +338,7 @@ A experiência normal não usa `alert()`, `confirm()` ou `prompt()` nativos.
 - separação entre ativas e concluídas;
 - conclusão derivada de `current >= target`;
 - forecast;
-- milestones/confetti discreto ao concluir.
+- badge/haptic + microanimação CSS discreta ao concluir; sem partículas/confetti.
 
 ### `finances.js`
 
@@ -406,6 +405,21 @@ approved = true  → segundo membro conectado
 ```
 
 Se esse significado mudar no futuro, frontend e SQL devem ser redesenhados juntos.
+
+## Recuperação de senha
+
+O login também suporta recuperação de senha com o mesmo client Supabase:
+
+```text
+Esqueci minha senha
+→ resetPasswordForEmail()
+→ link de recovery
+→ PASSWORD_RECOVERY
+→ Nova senha
+→ updateUser({ password })
+```
+
+O `redirectTo` é derivado de `window.location.origin + pathname`; não existe domínio de deploy hardcoded no código. A URL usada em produção/teste precisa estar autorizada em **Supabase → Authentication → URL Configuration → Redirect URLs**.
 
 # 7. Convite
 
@@ -650,7 +664,7 @@ Funcionalidades atuais relevantes:
 
 O estado aberto/recolhido das concluídas é apenas local de UI e não é persistido.
 
-A implementação atual ainda cria DOM para itens de todas as listas e esconde os que não pertencem à lista ativa. Isso é aceitável no volume atual e permanece como P2 de performance, não como bug aberto.
+A navegação continua conhecendo todas as listas, mas a área de itens renderiza DOM somente para `activeList.items`. Trocar de lista reconstrói apenas os itens da lista selecionada; filtros, concluídas, drag e roleta permanecem locais à lista ativa.
 
 # 13. Agenda
 
@@ -658,7 +672,7 @@ Compromissos possuem:
 
 - título;
 - data;
-- hora;
+- hora opcional (`time = null` representa **Dia todo**);
 - responsável;
 - subtítulo opcional;
 - `confirmed`;
@@ -671,6 +685,8 @@ Funcionalidades atuais:
 - editar pelo mesmo formulário;
 - edição versionada com `captureEdit()` + `saveFormEdit()`;
 - preservar a data atualmente selecionada ao criar;
+- permitir evento **Dia todo** sem horário artificial;
+- ordenar eventos de dia inteiro antes dos eventos com horário;
 - mostrar `Criado por você` ou `Criado por <parceiro>` quando `created_by` existe;
 - parceiro pode marcar **Ciente**;
 - criador não precisa confirmar o próprio compromisso;
@@ -743,6 +759,12 @@ Luis transfere R$ X para Ana
 ```
 
 A matemática continua vindo de `financialSummary().balance`. Não existe segundo cálculo no módulo.
+
+## Configuração financeira e concorrência
+
+A linha de `finances` também usa optimistic locking. Ao abrir o sheet, o módulo captura `id + nook_version`; o update usa essa versão esperada no filtro. O frontend nunca incrementa `nook_version` manualmente — o trigger do banco continua responsável.
+
+Se outra sessão salvar primeiro, o update antigo não sobrescreve: o store refaz `fetchFinances()`, atualiza a UI e retorna `FINANCE_CONFLICT` com feedback humano.
 
 # 15. Metas
 
@@ -889,7 +911,8 @@ Recado possui:
 
 - texto;
 - cor;
-- `owner` textual;
+- `owner` textual para apresentação/compatibilidade;
+- `created_by = p1 | p2` para identidade estável dos novos recados;
 - data de criação;
 - `expires_at` opcional;
 - reações;
@@ -934,13 +957,13 @@ Não altera:
 
 Edição usa `captureEdit()` + `saveFormEdit()`.
 
-## Limitação de autoria
+## Identidade de autoria
 
-A UI identifica autoria comparando `note.owner` com o nome retornado por `store.getAuthorName()`.
+Novos recados persistem `created_by = p1 | p2`. A UI usa esse campo prioritariamente para decidir autor, edição/exclusão e nome exibido; mudar o nome do perfil não altera a identidade do recado.
 
-Isso é suficiente para o MVP pessoal atual, mas não constitui autorização forte.
+Recados legacy podem continuar com `created_by = null` quando não houver backfill determinístico; nesses casos existe fallback temporário para a comparação textual antiga por `owner`.
 
-Se a regra “somente o autor edita” precisar ser garantida no backend, deve existir migração futura para identificador de autor estável e policy/RPC correspondente.
+Isso ainda não é uma barreira de autorização no banco: a RLS continua por casal. Endurecer “somente o autor pode atualizar” é uma feature separada e não deve ser confundida com a identidade estável já implementada.
 
 # 19. Sistema de feedback e confirmação
 
@@ -998,7 +1021,7 @@ Não intercepta:
 Cache atual:
 
 ```text
-nook-v1.13
+nook-v1.15
 ```
 
 Versões externas sincronizadas:
@@ -1134,11 +1157,9 @@ Mantém PWA simples. Offline completo de dados exigiria reconciliação muito ma
 
 A implementação foi validada estaticamente, mas a baseline atual ainda precisa de teste completo com P1/P2 no Supabase real.
 
-## Autoria de `notes`
+## Autorização de `notes`
 
-É a principal limitação estrutural nova conhecida.
-
-Não tentar “resolver” com mais comparação de nomes no frontend se a necessidade virar segurança real.
+`created_by` agora resolve identidade estável no frontend, mas a RLS ainda autoriza membros do casal no nível da linha. Se futuramente for requisito impedir tecnicamente que o parceiro atualize um recado alheio, isso exige policy/RPC específica; não adicionar hacks por nome.
 
 ## Sem testes automatizados
 
@@ -1162,7 +1183,7 @@ A UI atual usa `created_by` para autoria/“Ciente”. Registros legados sem ess
 
 ## Renderização de Listas
 
-Ainda cria DOM para todas as listas e esconde itens fora da lista ativa. Manter enquanto não houver evidência de problema; otimizar apenas por dor real.
+A área de itens agora cria DOM somente para a lista ativa. Abas/navegação continuam conhecendo todas as listas.
 
 ## CDNs
 

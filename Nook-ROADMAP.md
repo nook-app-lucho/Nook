@@ -1,7 +1,7 @@
 # ROADMAP — Nook
 
-**Atualizado em:** 26/10/2026  
-**Baseline:** `Nook - 26 Out v4` — pós-P1.3 (Metas + polimento de UX)
+**Atualizado em:** 27/10/2026  
+**Baseline:** `Nook - 27 Out v2` + hardening de Auth/Mural/Listas/Agenda/Finanças/CSS
 
 # 1. Visão de produto
 
@@ -204,7 +204,7 @@ P1 cria Nook
 - foreground após background;
 - isolamento entre dois casais;
 - Storage privado;
-- cache `nook-v1.13`;
+- cache `nook-v1.15`;
 - URLs externas versionadas no Cache Storage.
 
 ### Definição de pronto
@@ -312,7 +312,12 @@ Exemplos:
 
 Não precisa IA.
 
-# 7. Convite e onboarding
+# 7. Auth, convite e onboarding
+
+## ✅ AUTH.1 — Esqueci minha senha
+
+Fluxo completo com e-mail de recovery, `PASSWORD_RECOVERY` e atualização de senha; Redirect URL precisa estar autorizada no Supabase Auth.
+
 
 ## ✅ Compartilhar convite nativamente
 
@@ -397,21 +402,14 @@ Concluído para:
 
 Usa edição versionada.
 
-## 🔜 P1 técnico — autoria estável de recado
+## ✅ P1 técnico — autoria estável de recado
 
-**Prioridade:** depois do smoke test  
-**Complexidade:** M
+Implementado com `notes.created_by = p1 | p2 | null`.
 
-Hoje a UI identifica autor pelo texto `owner`.
-
-Se a regra “somente o autor edita” precisar ser garantida de forma robusta:
-
-- adicionar `created_by` ou equivalente estável em `notes`;
-- migrar novos registros;
-- adaptar store;
-- adicionar policy/RPC se necessário.
-
-Não implementar silenciosamente. Exige migração SQL explícita.
+- novos recados gravam identidade estável;
+- nome do perfil permanece apresentação;
+- legacy ambíguo pode permanecer `NULL` e usar fallback compatível;
+- RLS por autor continua fora do escopo.
 
 ## ⏳ P2 — Limitar preview de recados na Home
 
@@ -495,6 +493,10 @@ Concluído.
 - marcar/desmarcar move o item entre seções;
 - estado expandido é apenas local de UI.
 
+## ✅ LIST.3 — Renderizar somente lista ativa
+
+A navegação mantém todas as abas, mas o DOM de itens contém apenas `activeList.items`.
+
 ## 🔜 P1 — Duplicar lista
 
 Útil para compras recorrentes/viagem/checklist.
@@ -575,9 +577,9 @@ Atalhos manuais:
 
 Não criar recorrência completa/RRULE agora.
 
-## ⏳ P2 — Compromisso sem horário
+## ✅ AGENDA.3 — Compromisso sem horário
 
-Só se uso real justificar.
+`agenda.time = NULL` representa **Dia todo**; eventos de dia inteiro aparecem antes dos eventos com horário.
 
 # 13. Finanças
 
@@ -625,6 +627,10 @@ O resumo já respeita mês. Evoluir a lista quando fizer sentido.
 Concluído.
 
 A copy usa mês selecionado e nomes reais do casal, enquanto a matemática continua vindo de `financialSummary().balance`.
+
+## ✅ FIN.3 — Optimistic locking da configuração financeira
+
+Configuração captura `nook_version` ao abrir e bloqueia overwrite silencioso de formulário stale.
 
 ## ⏳ P2 — Resumo mensal leve
 
@@ -695,6 +701,10 @@ GOAL_TYPE.FINANCIAL / GOAL_TYPE.HABIT
 ```
 
 Sem migração de valores persistidos.
+
+## ✅ GOAL.2 — Remover canvas-confetti
+
+Partículas removidas; conclusão usa badge, haptic e microanimação CSS discreta com reduced motion.
 
 ## ⏳ P1 — Clarificar hábito
 
@@ -819,9 +829,9 @@ Concluído no helper central de upload.
 
 Conectar ao redesenho “Hoje primeiro”.
 
-## ⏳ P2 — Renderizar só lista ativa
+## ✅ LIST.3 — Renderizar só lista ativa
 
-Fazer se volume real justificar.
+Concluído sem virtualização/paginação.
 
 ## ⏳ P2 — Selecionar menos colunas
 
@@ -898,9 +908,9 @@ Baseline implementada.
 
 Baseline define contrato atual.
 
-## 🔜 P1/P2 — Autoria estável de notes
+## ✅ MURAL.1 — Identidade estável de notes
 
-Ver mural.
+Concluído com `created_by`; ownership enforcement no backend permanece separado.
 
 ## ⏳ P1 — Limpeza de arquivos órfãos
 
@@ -1025,18 +1035,18 @@ Falta para fechar formalmente:
 
 # 24. Ordem recomendada a partir de agora
 
-1. **Smoke test completo P1/P2 no Supabase real.**
-2. Corrigir qualquer regressão encontrada.
-3. Home “Hoje primeiro”.
-4. Quick Add.
-5. Duplicar conta para próximo mês.
-6. Duplicar lista.
-7. Testes automatizados leves de `rules.js`.
-8. Offline banner + revisão básica de acessibilidade.
-9. Autoria estável de recados, se o risco justificar migração.
-10. Templates simples de Listas/Metas.
-11. Resumo da semana.
-12. Só então otimizações P2 como renderizar apenas a lista ativa.
+1. **Rodar migration SQL da rodada de 27/10.**
+2. Configurar Redirect URL do password recovery no Supabase Auth.
+3. **Smoke test completo P1/P2 no Supabase real, incluindo recovery, Dia todo e conflito financeiro.**
+4. Corrigir qualquer regressão encontrada.
+5. Home “Hoje primeiro”.
+6. Quick Add.
+7. Duplicar conta para próximo mês.
+8. Duplicar lista.
+9. Testes automatizados leves de `rules.js`.
+10. Offline banner + revisão básica de acessibilidade.
+11. Templates simples de Listas/Metas.
+12. Resumo da semana.
 
 # 25. Filtro para qualquer nova ideia
 

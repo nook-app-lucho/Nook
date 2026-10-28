@@ -46,6 +46,9 @@ export const humanizeError = (error, fallback = 'Não foi possível concluir. Te
     const message = String(error?.message || '').trim();
     const lower = message.toLowerCase();
 
+    if (error?.code === 'FINANCE_CONFLICT') {
+        return message || 'As configurações financeiras mudaram em outro dispositivo. Atualizamos os dados para você.';
+    }
     if (error?.code === 'EDIT_CONFLICT' || lower.includes('mudou desde que você abriu')) {
         return 'Essa alteração entrou em conflito com outra atualização. Reabra e tente novamente.';
     }

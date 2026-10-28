@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Nook - Gestão a Dois</title>
     <link rel="icon" type="image/svg+xml" href="img/icon.svg">
     <link rel="icon" type="image/png" sizes="192x192" href="img/icon-192.png">
@@ -55,7 +55,6 @@
         window.addEventListener('touchmove', function() {}, {passive: false});
     });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js" defer></script>
 </head>
 <body>
     <main class="app-container">
@@ -82,7 +81,51 @@
                 </div>
                 <span id="login-error" class="error-msg d-none">E-mail ou senha incorretos.</span>
                 <button type="submit" class="btn-primary" id="btn-auth-submit">Entrar no Nook</button>
+                <button type="button" id="btn-forgot-password" class="btn-link">Esqueci minha senha</button>
                 <button type="button" id="btn-toggle-auth" class="btn-link">Não tem conta? Criar conta nova</button>
+            </form>
+        </div>
+
+        <!-- TELA: SOLICITAR RECUPERAÇÃO DE SENHA -->
+        <div id="view-forgot-password" class="view">
+            <section class="hero-dashboard hero-login">
+                <div class="hero-overlay"></div>
+                <div class="hero-content auth-hero-content">
+                    <h1 class="hero-title-sm">Recuperar senha</h1>
+                    <span class="hero-subtitle">Enviaremos um link seguro para o seu e-mail.</span>
+                </div>
+            </section>
+            <form id="form-forgot-password" class="dash-card form-card">
+                <div class="form-group mb-0">
+                    <label for="forgot-email">E-mail</label>
+                    <input type="email" id="forgot-email" class="form-control" placeholder="seu@email.com" data-autofocus required>
+                </div>
+                <button type="submit" class="btn-primary">Enviar link de recuperação</button>
+                <button type="button" id="btn-forgot-back-login" class="btn-link">Voltar para login</button>
+            </form>
+        </div>
+
+        <!-- TELA: DEFINIR NOVA SENHA -->
+        <div id="view-password-recovery" class="view">
+            <section class="hero-dashboard hero-login">
+                <div class="hero-overlay"></div>
+                <div class="hero-content auth-hero-content">
+                    <h1 class="hero-title-sm">Criar nova senha</h1>
+                    <span class="hero-subtitle">Escolha uma nova senha para sua conta do Nook.</span>
+                </div>
+            </section>
+            <form id="form-password-recovery" class="dash-card form-card">
+                <div class="form-group mb-0">
+                    <label for="recovery-password">Nova senha</label>
+                    <input type="password" id="recovery-password" class="form-control" placeholder="••••••••" minlength="6" autocomplete="new-password" data-autofocus required>
+                </div>
+                <div class="form-group mb-0">
+                    <label for="recovery-password-confirm">Confirmar senha</label>
+                    <input type="password" id="recovery-password-confirm" class="form-control" placeholder="••••••••" minlength="6" autocomplete="new-password" required>
+                </div>
+                <span id="recovery-password-error" class="error-msg d-none"></span>
+                <button type="submit" class="btn-primary">Atualizar senha</button>
+                <button type="button" id="btn-recovery-back-login" class="btn-link">Voltar para login</button>
             </form>
         </div>
 
@@ -224,7 +267,7 @@
             </section>
             
 <section class="tasks-section mt-16">
-    <h3 class="section-title">COMO ESTAMOS HOJE?</h3>
+    <h3 class="section-title">Como estamos hoje?</h3>
     <div class="flex-gap-12">
         <!-- Cartão P1 -->
         <div class="dash-card mood-card" id="btn-mood-p1">
@@ -252,7 +295,7 @@
             
             <section class="tasks-section mt-24">
                 <div class="section-header">
-                    <h3 class="section-title mb-0">MURAL DE RECADOS</h3>
+                    <h3 class="section-title mb-0">Mural de recados</h3>
                     <button id="btn-open-note-modal" class="btn-today btn-today-outline">
                         <i class="ph ph-push-pin mr-4"></i> Novo
                     </button>
@@ -274,7 +317,7 @@
             
             <section class="tasks-section mt-24">
                 <div class="section-header">
-                    <h3 class="section-title mb-0">NOSSA LINHA DO TEMPO</h3>
+                    <h3 class="section-title mb-0">Nossa linha do tempo</h3>
                     <button id="btn-open-memory-modal" class="btn-today btn-today-outline">
                         <i class="ph ph-plus mr-4"></i> Nova Memória
                     </button>
@@ -283,7 +326,7 @@
             </section>
             
             <section class="tasks-section mt-16">
-                <h3 class="section-title">RESUMO</h3>
+                <h3 class="section-title">Resumo</h3>
                 <div class="dashboard-cards">
                     <div class="dash-card cursor-pointer" id="home-tasks-card">
                         <div class="dash-icon bg-primary-light">
@@ -309,7 +352,7 @@
             </section>
             
             <section class="tasks-section mt-24">
-                <h3 class="section-title">O QUE TEMOS PRA HOJE?</h3>
+                <h3 class="section-title">O que temos pra hoje?</h3>
                 <div class="task-group">
                     <ul class="task-list" id="home-agenda-list"></ul>
                 </div>
@@ -456,13 +499,13 @@
             </button>
             
             <section class="tasks-section">
-                <h3 class="section-title">PRÓXIMOS VENCIMENTOS DA CASA</h3>
+                <h3 class="section-title">Próximos vencimentos da casa</h3>
                 <div class="task-group"><ul class="task-list" id="expenses-list-container"></ul></div>
             </section>
             
             <section class="tasks-section mt-24">
                 <div class="section-header mb-8">
-                    <h3 class="section-title mb-0">HISTÓRICO (PAGAS)</h3>
+                    <h3 class="section-title mb-0">Histórico (pagas)</h3>
                     <input type="month" id="fin-history-month" class="form-control input-month">
                 </div>
                 <div class="task-group"><ul class="task-list" id="expenses-history-list"></ul></div>
@@ -510,7 +553,7 @@
             </section>
             
             <section class="tasks-section mt-24">
-                <h3 class="section-title">PRÓXIMOS COMPROMISSOS</h3>
+                <h3 class="section-title">Próximos compromissos</h3>
                 <div class="task-group"><ul class="task-list" id="agenda-all-list"></ul></div>
             </section>
         </div>
@@ -526,7 +569,7 @@
                 <div class="metric-card"><span class="metric-label">Metas Ativas</span><span class="metric-value" id="metric-goals-count">0</span></div>
             </section>
             <section class="tasks-section mt-16">
-                <h3 class="section-title">EM ANDAMENTO</h3>
+                <h3 class="section-title">Em andamento</h3>
                 <section class="dashboard-cards" id="goals-list-container"></section>
             </section>
             <section class="tasks-section mt-16 d-none" id="goals-completed-section">
@@ -546,21 +589,21 @@
                 <div class="brand-greeting"><span class="greeting-text">Ajustes</span></div>
             </header>
             
-           <section class="tasks-section">
-    <!-- Bloco 1: Informações e Configurações Seguras -->
-    <div class="task-group mb-16">
+           <section class="tasks-section settings-groups">
+    <h3 class="settings-section-label">Perfil</h3>
+    <div class="task-group">
         <ul class="task-list">
             <li class="task-item setting-item cursor-pointer" id="btn-reopen-onboarding">
                 <i class="ph ph-heart text-muted icon-lg"></i>
-                <span class="task-text">Perfil do Casal (Onboarding)</span>
+                <span class="task-text">Perfil do Casal</span>
                 <i class="ph ph-caret-right text-muted"></i>
             </li>
-            <li class="task-item setting-item cursor-pointer" id="btn-open-theme-modal">
-                <i class="ph ph-palette text-muted icon-lg"></i>
-                <span class="task-text">Aparência</span>
-                <span id="current-theme-label" class="theme-label">Sistema</span>
-                <i class="ph ph-caret-right text-muted"></i>
-            </li>
+        </ul>
+    </div>
+
+    <h3 class="settings-section-label">Nosso Nook</h3>
+    <div class="task-group">
+        <ul class="task-list">
             <li class="task-item setting-item cursor-default setting-invite-item">
                 <i class="ph ph-link text-muted icon-lg"></i>
                 <div class="setting-invite-content">
@@ -578,10 +621,22 @@
         </ul>
     </div>
 
-    <!-- Bloco 2: Zona de Perigo (Destacada) -->
+    <h3 class="settings-section-label">Aparência</h3>
     <div class="task-group">
         <ul class="task-list">
-            <li class="task-item setting-item setting-item-danger text-center" id="btn-logout-app">
+            <li class="task-item setting-item cursor-pointer" id="btn-open-theme-modal">
+                <i class="ph ph-palette text-muted icon-lg"></i>
+                <span class="task-text">Tema</span>
+                <span id="current-theme-label" class="theme-label">Sistema</span>
+                <i class="ph ph-caret-right text-muted"></i>
+            </li>
+        </ul>
+    </div>
+
+    <h3 class="settings-section-label">Conta</h3>
+    <div class="task-group">
+        <ul class="task-list">
+            <li class="task-item setting-item setting-item-danger" id="btn-logout-app">
                 <i class="ph ph-sign-out icon-lg"></i>
                 <span class="task-text font-bold">Sair da Conta</span>
             </li>
@@ -616,8 +671,12 @@
                 <div class="form-group"><label for="event-title">Título</label><input type="text" id="event-title" class="form-control" data-autofocus required></div>
                 <div class="form-row">
                     <div class="form-group flex-1"><label for="event-date">Data</label><input type="date" id="event-date" class="form-control" required></div>
-                    <div class="form-group flex-1"><label for="event-time">Horário</label><input type="time" id="event-time" class="form-control" required></div>
+                    <div class="form-group flex-1" id="event-time-group"><label for="event-time">Horário</label><input type="time" id="event-time" class="form-control" required></div>
                 </div>
+                <label class="form-check-row" for="event-all-day">
+                    <input type="checkbox" id="event-all-day">
+                    <span>Dia todo</span>
+                </label>
                 <div class="form-group">
                     <label for="event-owner">De quem é?</label>
                     <select id="event-owner" class="form-control">

@@ -63,8 +63,7 @@ export const renderAllListsModal = () => {
         `;
         card.addEventListener('click', () => {
             activeListId = list.id;
-            // OTIMIZAÇÃO: Não destroi o DOM, apenas aplica o filtro de visibilidade
-            applyListFilters();
+            renderLists();
             closeAllModals(true);
         });
         grid.appendChild(card);
@@ -98,9 +97,7 @@ export const applyListFilters = () => {
     let pendingVisible = 0;
     let completedVisible = 0;
     document.querySelectorAll('#task-list-container .task-item, #completed-task-list-container .task-item').forEach(item => {
-        const matchList = item.dataset.listId === activeListId;
-        const matchFilter = activeFilter === 'all' || item.dataset.owner === activeFilter;
-        const match = matchList && matchFilter;
+        const match = activeFilter === 'all' || item.dataset.owner === activeFilter;
         item.classList.toggle('d-none', !match);
         if (match) {
             if (item.dataset.completed === 'true') completedVisible++;
@@ -218,7 +215,7 @@ export const renderLists = () => {
         
         btn.addEventListener('click', () => { 
             activeListId = list.id; 
-            applyListFilters(); // Substitui a chamada completa de re-render
+            renderLists();
         });
         tabsContainer.appendChild(btn);
     });
@@ -258,8 +255,10 @@ export const renderLists = () => {
         enableDesktopScroll(filtersContainer);
     }
     
-    // Anexa todos os itens no DOM com marcação de IDs para uso futuro do filtro
-    store.lists.forEach(list => {
+    // Renderiza somente os itens da lista ativa. As abas continuam conhecendo todas as listas.
+    const activeList = store.lists.find(list => sameId(list.id, activeListId));
+    if (activeList) {
+        const list = activeList;
         list.items.forEach((item) => {
             let priorityUI = '<i class="ph ph-flag text-muted"></i>';
             let prioritySubtext = '';
@@ -270,7 +269,6 @@ export const renderLists = () => {
             li.className = `task-item ${item.completed ? 'completed' : ''} d-none`;
             li.draggable = true;
             li.dataset.id = item.id;
-            li.dataset.listId = list.id;
             li.dataset.owner = item.owner;
             li.dataset.completed = String(item.completed);
             
@@ -335,7 +333,7 @@ export const renderLists = () => {
             li.addEventListener('dragend', () => { li.classList.remove('dragging'); li.classList.remove('drag-over'); draggedItemIndex = null; });
             (item.completed ? completedTaskContainer : taskContainer).appendChild(li);
         });
-    });
+    }
 
     applyListFilters();
 };
@@ -365,7 +363,6 @@ const runDecisionRoulette = () => {
             resultBox.textContent = chosen.text;
             btnConfirm.classList.remove('d-none');
             triggerHaptic([80, 40, 80]);
-            if (window.confetti) confetti({ particleCount: 100, spread: 60, origin: { y: 0.6 } });
             btnConfirm.onclick = async () => { await runAction(btnConfirm, async () => { await editListItem(currentList.id, chosen.id, item => ({ ...item, completed: true })); renderLists(); closeAllModals(true); }); };
         }
     }, 100);

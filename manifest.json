@@ -4,7 +4,7 @@
   "description": "Sua vida a dois, organizada em um só lugar.",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#FAF9F6",
+  "background_color": "#F4F0ED",
   "theme_color": "#E07A5F",
   "orientation": "portrait",
   "icons": [

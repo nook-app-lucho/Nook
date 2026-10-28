@@ -30,6 +30,7 @@ const PRESET_ICONS = ['🎯', '✈️', '🏠', '🚗', '💰', '💍', '🏖️
 let goalEditContext = null;
 let editingGoalId = null;
 let completedGoalsExpanded = false;
+let justCompletedGoalId = null;
 
 const syncGoalTypeFields = (type, editing = false) => {
     const financial = type === GOAL_TYPE.FINANCIAL;
@@ -138,10 +139,11 @@ const deadlineMessage = (goal, progress) => {
     return html;
 };
 
-const celebrateCompletion = (before, after, target) => {
+const celebrateCompletion = (goalId, before, after, target) => {
     if (before < target && after >= target) {
-        triggerHaptic([100, 50, 100]);
-        if (window.confetti) window.confetti({ particleCount: 60, spread: 55, origin: { y: 0.65 } });
+        justCompletedGoalId = goalId;
+        completedGoalsExpanded = true;
+        triggerHaptic([80, 40, 80]);
     }
 };
 
@@ -201,7 +203,7 @@ const renderGoalCard = goal => {
         : '';
 
     const card = document.createElement('div');
-    card.className = `dash-card goal-card ${completed ? 'goal-card--completed' : ''}`;
+    card.className = `dash-card goal-card ${completed ? 'goal-card--completed' : ''} ${completed && sameId(goal.id, justCompletedGoalId) ? 'goal-card--just-completed' : ''}`;
     card.innerHTML = `
         <div class="goal-header" title="Ver histórico">
             <div class="goal-title-wrap">
@@ -254,7 +256,7 @@ const renderGoalCard = goal => {
                 current: next,
                 history: [...(latest.history || []), { date: getLocalDateString(), owner: store.getAuthorName(), personId: store.getLoggedUser(), amount: 1 }]
             });
-            celebrateCompletion(current, next, target);
+            celebrateCompletion(latest.id, current, next, target);
             renderGoals();
             showToast(next >= target ? 'Meta concluída 🎉' : 'Progresso adicionado ✓');
         });
@@ -351,6 +353,7 @@ export const renderGoals = () => {
     const countMetric = document.getElementById('metric-goals-count');
     if (savedMetric) savedMetric.textContent = formatCurrency(totalSaved);
     if (countMetric) countMetric.textContent = activeGoals.length;
+    justCompletedGoalId = null;
 };
 
 export const initGoals = () => {
@@ -440,7 +443,7 @@ export const initGoals = () => {
                 current: next,
                 history: [...(goal.history || []), { date: getLocalDateString(), owner: store.getAuthorName(), personId: store.getLoggedUser(), amount }]
             });
-            celebrateCompletion(current, next, target);
+            celebrateCompletion(goal.id, current, next, target);
             renderGoals();
             closeAllModals(true);
             form.reset();

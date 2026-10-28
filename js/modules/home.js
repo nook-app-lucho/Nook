@@ -146,7 +146,7 @@ export const renderHome = () => {
     const agendaList = document.getElementById('home-agenda-list');
     if (agendaList) {
         agendaList.innerHTML = '';
-        const todayEvents = (store.agenda || []).filter(ev => ev.date === todayStr).sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+        const todayEvents = (store.agenda || []).filter(ev => ev.date === todayStr).sort((a, b) => String(a.time || '').localeCompare(String(b.time || '')));
         if (todayEvents.length === 0) {
             agendaList.innerHTML = `<li class="empty-state empty-state-no-border"><i class="ph ph-coffee empty-icon"></i>Dia livre para vocês curtirem!</li>`;
         } else {
@@ -156,7 +156,7 @@ export const renderHome = () => {
                 li.innerHTML = `
                     <div class="task-text">
                         <strong class="task-item-title">${escapeHTML(ev.title)}</strong>
-                        <div class="task-item-subtitle">${escapeHTML(ev.time || '')}</div>
+                        <div class="task-item-subtitle">${escapeHTML(ev.time ? String(ev.time).slice(0, 5) : 'Dia todo')}</div>
                     </div>
                     ${getAvatarHtml(ev.owner)}
                 `;
@@ -298,6 +298,19 @@ const renderMemoriesSection = () => {
     });
 };
 
+const noteBelongsToCurrentUser = note => {
+    const currentPerson = store.getLoggedUser();
+    if (note?.createdBy) return note.createdBy === currentPerson;
+    // Compatibilidade para recados legacy sem created_by.
+    return note?.owner === store.getAuthorName();
+};
+
+const noteAuthorLabel = note => {
+    if (note?.createdBy === 'p1') return store.profile?.p1 || note.owner || 'P1';
+    if (note?.createdBy === 'p2') return store.profile?.p2 || note.owner || 'P2';
+    return note?.owner || 'Autor';
+};
+
 const renderNotesSection = () => {
     const grid = document.getElementById('home-notes-grid');
     if (!grid) return;
@@ -305,8 +318,6 @@ const renderNotesSection = () => {
     grid.innerHTML = '';
     const now = new Date();
     const validNotes = (store.notes || []).filter(n => !n.expiresAt || new Date(n.expiresAt) > now);
-    const myAuthorName = store.getAuthorName();
-    
     if (validNotes.length === 0) {
         grid.innerHTML = `
             <div class="empty-state-card">
@@ -321,7 +332,8 @@ const renderNotesSection = () => {
     sortedNotes.forEach((note, index) => {
         const card = document.createElement('div');
         const tiltClass = index % 2 === 0 ? 'note-card--tilt-right' : 'note-card--tilt-left';
-        const canEdit = note.owner === myAuthorName;
+        const canManage = noteBelongsToCurrentUser(note);
+        const authorLabel = noteAuthorLabel(note);
         card.className = `note-card ${tiltClass} ${['yellow', 'pink', 'blue'].includes(note.color) ? note.color : 'yellow'}`;
         
         const reactionsDisplay = escapeHTML((note.reactions || []).join(''));
@@ -330,15 +342,14 @@ const renderNotesSection = () => {
             <i class="ph-fill ph-push-pin note-pin"></i>
             <p class="note-text-content">${escapeHTML(note.text)}</p>
             <div class="note-reactions-display">${reactionsDisplay}</div>
-            <span class="note-author">- ${escapeHTML(note.owner)}</span>
+            <span class="note-author">- ${escapeHTML(authorLabel)}</span>
             
             <div class="note-actions">
                 ${NOTE_REACTIONS.map(emoji => `<button type="button" class="btn-reaction" data-emoji="${escapeHTML(emoji)}">${escapeHTML(emoji)}</button>`).join('')}
             </div>
 
             <div class="note-card-controls">
-                ${canEdit ? '<button type="button" class="btn-note-control btn-edit-note" title="Editar recado"><i class="ph ph-pencil-simple"></i></button>' : ''}
-                <button type="button" class="btn-note-control btn-delete-note" title="Apagar recado"><i class="ph ph-trash"></i></button>
+                ${canManage ? '<button type="button" class="btn-note-control btn-edit-note" title="Editar recado"><i class="ph ph-pencil-simple"></i></button><button type="button" class="btn-note-control btn-delete-note" title="Apagar recado"><i class="ph ph-trash"></i></button>' : ''}
             </div>
         `;
         
@@ -357,7 +368,7 @@ const renderNotesSection = () => {
 
         card.querySelector('.btn-edit-note')?.addEventListener('click', () => {
             const latest = store.notes.find(item => sameId(item.id, note.id));
-            if (!latest || latest.owner !== store.getAuthorName()) {
+            if (!latest || !noteBelongsToCurrentUser(latest)) {
                 showToast('Você só pode editar os seus próprios recados.', 'ph-info');
                 return;
             }
@@ -377,7 +388,7 @@ const renderNotesSection = () => {
             openModal('note-bottom-sheet');
         });
 
-        card.querySelector('.btn-delete-note').addEventListener('click', () => {
+        card.querySelector('.btn-delete-note')?.addEventListener('click', () => {
             openConfirmSheet({
                 title: 'Excluir recado?',
                 message: `“${note.text}” será removido do mural. Esta ação não poderá ser desfeita.`,
@@ -550,7 +561,7 @@ triggerHaptic(20);
             if (editingNoteId != null) {
                 const existing = noteEditContext?.record;
                 if (!existing || !sameId(existing.id, editingNoteId)) throw new Error('Este recado mudou. Reabra a edição.');
-                if (existing.owner !== store.getAuthorName()) throw new Error('Você só pode editar os seus próprios recados.');
+                if (!noteBelongsToCurrentUser(existing)) throw new Error('Você só pode editar os seus próprios recados.');
                 const expiresAt = durationValue === noteOriginalDuration ? existing.expiresAt : expiresAtFromDuration(durationValue);
                 await saveFormEdit(noteEditContext, { text, expiresAt }, 'note-edit-warning');
                 showToast('Recado atualizado ✓');
@@ -559,6 +570,7 @@ triggerHaptic(20);
                     text,
                     color: document.getElementById('note-color').value,
                     owner: store.getAuthorName(),
+                    createdBy: store.getLoggedUser(),
                     date: new Date().toISOString(),
                     expiresAt: expiresAtFromDuration(durationValue),
                     reactions: []

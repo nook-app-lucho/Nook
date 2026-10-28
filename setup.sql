@@ -93,7 +93,7 @@ create table if not exists public.agenda (
     couple_id uuid not null,
     title text not null,
     date date not null,
-    time time without time zone not null,
+    time time without time zone,
     owner text not null,
     subtitle text,
     created_by text,
@@ -425,6 +425,7 @@ create table if not exists public.notes (
     text text not null,
     color text not null default 'yellow'::text,
     owner text not null,
+    created_by text,
     date timestamptz not null default now(),
     expires_at timestamptz,
     reactions jsonb not null default '[]'::jsonb,
@@ -441,6 +442,9 @@ create table if not exists public.notes (
 
     constraint notes_color_check
         check (color = any (array['yellow'::text, 'pink'::text, 'blue'::text])),
+
+    constraint notes_created_by_check
+        check (created_by is null or created_by = any (array['p1'::text, 'p2'::text])),
 
     constraint notes_nook_version_check
         check (nook_version > 0),
